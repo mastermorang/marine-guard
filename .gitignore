@@ -2,6 +2,7 @@
 
 # Node runtime artifacts
 web/node_modules/
+web/dist/
 web/marineguard.db
 web/marineguard.db-shm
 web/marineguard.db-wal

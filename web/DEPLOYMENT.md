@@ -48,11 +48,19 @@ GET /api/health
 Project settings:
 
 - Framework preset: `None`
-- Root directory: `web/public`
-- Build command: leave empty
-- Output directory: leave empty
+- Root directory: `web`
+- Build command: `npm run build:pages`
+- Build output directory: `dist`
 
-Before deploying, edit `web/public/config.js`:
+Cloudflare Pages environment variables:
+
+- `PUBLIC_API_BASE=https://your-backend.example.com`
+- `PUBLIC_SOCKET_URL=https://your-backend.example.com`
+- `PUBLIC_SOCKET_PATH=/socket.io`
+
+The build generates `dist/config.js` automatically from those values.
+
+Manual equivalent:
 
 ```js
 window.MARINE_GUARD_CONFIG = {

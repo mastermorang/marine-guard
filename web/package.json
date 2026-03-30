@@ -8,7 +8,8 @@
     "dev": "node server.js",
     "start:backend": "node backend/server.js",
     "start:collector": "node collector/index.js",
-    "dev:collector": "node collector/index.js"
+    "dev:collector": "node collector/index.js",
+    "build:pages": "node scripts/build-pages.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
