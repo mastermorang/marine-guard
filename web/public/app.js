@@ -1,4 +1,15 @@
-const socket = io();
+const runtimeConfig = window.MARINE_GUARD_CONFIG || {};
+const apiBase = (runtimeConfig.apiBase || "").replace(/\/$/, "");
+const socketUrl = runtimeConfig.socketUrl || apiBase || window.location.origin;
+const socketPath = runtimeConfig.socketPath || "/socket.io";
+const socket = io(socketUrl, {
+  path: socketPath,
+  transports: ["websocket", "polling"]
+});
+
+function apiUrl(pathname) {
+  return apiBase ? `${apiBase}${pathname}` : pathname;
+}
 
 const sensors = new Map();
 const markers = new Map();
@@ -711,7 +722,7 @@ function selectIncident(incident) {
 
 async function loadIncidents() {
   try {
-    const response = await fetch("/api/incidents");
+    const response = await fetch(apiUrl("/api/incidents"));
     incidents = await response.json();
     renderIncidentList();
 
