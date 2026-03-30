@@ -3,249 +3,365 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Marine Guard — 모니터링 서비스 플랫폼</title>
-  <meta name="description" content="마린가드 웨어러블 센서 모니터링 서비스 플랫폼 — 실시간 위치 추적, 심박수, 비상 알림">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="style.css">
+  <title>Marine Guard Monitoring Platform</title>
+  <meta
+    name="description"
+    content="마린가드 해양안전 모니터링 플랫폼. 웨어러블 센서 상태, 실시간 위치, 사고 로그를 한 화면에서 확인합니다."
+  >
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+KR:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Sidebar -->
-  <nav class="sidebar" id="sidebar">
-    <div class="sidebar-header">
-      <div class="logo">
-        <div class="logo-icon-wrap">
-          <svg class="logo-icon" viewBox="0 0 40 40" fill="none">
-            <circle cx="20" cy="20" r="18" fill="#4F46E5"/>
-            <path d="M12 25C14 18 18 14 20 12C22 14 26 18 28 25" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
-            <path d="M15 28C17 23 19 20 20 18C21 20 23 23 25 28" stroke="white" stroke-width="2" stroke-linecap="round"/>
-          </svg>
-        </div>
-        <div class="logo-text">
-          <span class="logo-title">MARINE GUARD</span>
-        </div>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar__brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 44 44" fill="none">
+          <circle cx="22" cy="22" r="22" fill="#0C5D86"></circle>
+          <path d="M14 27C16 20 19.5 16 22 13.8C24.5 16 28 20 30 27" stroke="#FFFFFF" stroke-width="2.7" stroke-linecap="round"></path>
+          <path d="M17.5 30.2C19 26.1 20.6 23.2 22 21.4C23.4 23.2 25 26.1 26.5 30.2" stroke="#AEE6FF" stroke-width="2.2" stroke-linecap="round"></path>
+        </svg>
+      </div>
+      <div class="brand-copy">
+        <strong>MARINE GUARD</strong>
+        <span>Marine Safety Platform</span>
       </div>
     </div>
-    <ul class="nav-menu">
-      <li class="nav-item active" data-page="dashboard">
-        <div class="nav-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-        </div>
-        <div class="nav-label">
-          <span class="nav-title">대시보드</span>
-          <span class="nav-subtitle">실시간 현황</span>
-        </div>
-      </li>
-      <li class="nav-item" data-page="livemap">
-        <div class="nav-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
-        </div>
-        <div class="nav-label">
-          <span class="nav-title">라이브 맵</span>
-          <span class="nav-subtitle">실시간 위치</span>
-        </div>
-      </li>
-      <li class="nav-item" data-page="incidents">
-        <div class="nav-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        </div>
-        <div class="nav-label">
-          <span class="nav-title">사건 로그</span>
-          <span class="nav-subtitle">사건 관리</span>
-        </div>
-      </li>
-      <li class="nav-item" data-page="devices">
-        <div class="nav-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/></svg>
-        </div>
-        <div class="nav-label">
-          <span class="nav-title">디바이스</span>
-          <span class="nav-subtitle">웨어러블 관리</span>
-        </div>
-      </li>
-      <li class="nav-item" data-page="reports">
-        <div class="nav-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-        </div>
-        <div class="nav-label">
-          <span class="nav-title">리포트</span>
-          <span class="nav-subtitle">통계 & 분석</span>
-        </div>
-      </li>
-      <li class="nav-item" data-page="settings">
-        <div class="nav-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        </div>
-        <div class="nav-label">
-          <span class="nav-title">설정</span>
-          <span class="nav-subtitle">시스템 설정</span>
-        </div>
-      </li>
-    </ul>
-    <div class="sidebar-footer">
-      <div class="connection-status" id="connectionStatus">
-        <span class="status-dot offline"></span>
-        <span class="status-text">연결 대기</span>
-      </div>
-    </div>
-  </nav>
 
-  <!-- Mobile Header -->
-  <header class="mobile-header" id="mobileHeader">
-    <button class="menu-btn" id="menuBtn">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    <nav class="sidebar__nav">
+      <button class="nav-item active" data-page="dashboard" type="button">
+        <span class="nav-item__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="3" y="3" width="7" height="7" rx="1.4"></rect>
+            <rect x="14" y="3" width="7" height="7" rx="1.4"></rect>
+            <rect x="3" y="14" width="7" height="7" rx="1.4"></rect>
+            <rect x="14" y="14" width="7" height="7" rx="1.4"></rect>
+          </svg>
+        </span>
+        <span class="nav-item__copy">
+          <strong>대시보드</strong>
+          <small>실시간 현황</small>
+        </span>
+      </button>
+
+      <button class="nav-item" data-page="livemap" type="button">
+        <span class="nav-item__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="9"></circle>
+            <path d="M12 3C9.5 5.7 8 8.9 8 12C8 15.1 9.5 18.3 12 21"></path>
+            <path d="M12 3C14.5 5.7 16 8.9 16 12C16 15.1 14.5 18.3 12 21"></path>
+            <path d="M3 12H21"></path>
+          </svg>
+        </span>
+        <span class="nav-item__copy">
+          <strong>라이브 맵</strong>
+          <small>실시간 위치</small>
+        </span>
+      </button>
+
+      <button class="nav-item" data-page="incidents" type="button">
+        <span class="nav-item__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M14 3H7A2 2 0 0 0 5 5V19A2 2 0 0 0 7 21H17A2 2 0 0 0 19 19V8Z"></path>
+            <path d="M14 3V8H19"></path>
+            <path d="M8 13H16"></path>
+            <path d="M8 17H13"></path>
+          </svg>
+        </span>
+        <span class="nav-item__copy">
+          <strong>사건 로그</strong>
+          <small>사고 및 알람</small>
+        </span>
+      </button>
+
+      <button class="nav-item" data-page="devices" type="button">
+        <span class="nav-item__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="4" y="5" width="16" height="14" rx="2"></rect>
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M9 2V5"></path>
+            <path d="M15 2V5"></path>
+            <path d="M9 19V22"></path>
+            <path d="M15 19V22"></path>
+          </svg>
+        </span>
+        <span class="nav-item__copy">
+          <strong>디바이스</strong>
+          <small>기기 목록</small>
+        </span>
+      </button>
+
+      <button class="nav-item" data-page="reports" type="button">
+        <span class="nav-item__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M4 19H20"></path>
+            <path d="M7 16V11"></path>
+            <path d="M12 16V6"></path>
+            <path d="M17 16V9"></path>
+          </svg>
+        </span>
+        <span class="nav-item__copy">
+          <strong>리포트</strong>
+          <small>통계 분석</small>
+        </span>
+      </button>
+
+      <button class="nav-item" data-page="settings" type="button">
+        <span class="nav-item__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15A1.65 1.65 0 0 0 20 16.6L20.1 16.7A2 2 0 1 1 17.3 19.5L17.2 19.4A1.65 1.65 0 0 0 15.6 18.8A1.65 1.65 0 0 0 14.6 20.3V20.5A2 2 0 1 1 10.6 20.5V20.3A1.65 1.65 0 0 0 9.5 18.8A1.65 1.65 0 0 0 8 19.4L7.9 19.5A2 2 0 0 1 5.1 16.7L5.2 16.6A1.65 1.65 0 0 0 5.8 15A1.65 1.65 0 0 0 4.3 14H4A2 2 0 1 1 4 10H4.3A1.65 1.65 0 0 0 5.8 9A1.65 1.65 0 0 0 5.2 7.4L5.1 7.3A2 2 0 1 1 7.9 4.5L8 4.6A1.65 1.65 0 0 0 9.5 5.2A1.65 1.65 0 0 0 10.6 3.7V3.5A2 2 0 1 1 14.6 3.5V3.7A1.65 1.65 0 0 0 15.6 5.2A1.65 1.65 0 0 0 17.2 4.6L17.3 4.5A2 2 0 1 1 20.1 7.3L20 7.4A1.65 1.65 0 0 0 19.4 9A1.65 1.65 0 0 0 20.9 10H21A2 2 0 1 1 21 14H20.9A1.65 1.65 0 0 0 19.4 15Z"></path>
+          </svg>
+        </span>
+        <span class="nav-item__copy">
+          <strong>설정</strong>
+          <small>운영 환경</small>
+        </span>
+      </button>
+    </nav>
+
+    <div class="sidebar__footer">
+      <div class="status-card" id="connectionStatus">
+        <span class="status-card__dot is-offline" id="sidebarStatusDot"></span>
+        <div>
+          <strong>연결 상태</strong>
+          <span id="sidebarStatusText">센서 대기 중</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+  <header class="mobile-header">
+    <button class="mobile-header__menu" id="menuBtn" type="button" aria-label="메뉴 열기">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 6H21"></path>
+        <path d="M3 12H21"></path>
+        <path d="M3 18H21"></path>
+      </svg>
     </button>
-    <span class="mobile-title">MARINE GUARD</span>
-    <div class="mobile-status" id="mobileStatus"><span class="status-dot offline"></span></div>
+    <div class="mobile-header__title">MARINE GUARD</div>
+    <span class="status-card__dot is-offline" id="mobileStatusDot"></span>
   </header>
 
-  <!-- Main Content -->
-  <main class="main-content">
-    <!-- Top Bar -->
+  <main class="main">
     <div class="topbar">
-      <div class="topbar-left">
-        <div class="alert-banner" id="alertBanner" style="display:none;">
-          <span class="alert-type">이탈</span>
-          <span id="alertText"></span>
-        </div>
+      <div class="alert-strip" id="alertBanner" hidden>
+        <span class="alert-strip__badge">알람</span>
+        <span id="alertText">위험 알림 없음</span>
       </div>
-      <div class="topbar-right">
-        <div class="user-info" id="userInfo">
-          <div class="user-avatar">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          </div>
-          <div class="user-detail">
-            <span class="user-name">홍길동</span>
-            <span class="user-email">hong@gmail.com</span>
-          </div>
-          <svg class="user-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+
+      <div class="profile-chip">
+        <div class="profile-chip__avatar">현</div>
+        <div class="profile-chip__copy">
+          <strong>현장 관리자</strong>
+          <span>marine.guard@kmcp.io</span>
         </div>
       </div>
     </div>
 
-    <!-- ════════ Dashboard ════════ -->
-    <section class="page active" id="page-dashboard">
-      <div class="dashboard-body">
-        <!-- Main Dashboard Grid -->
-        <div class="dash-grid">
-          <!-- Left: Active Guests -->
-          <div class="dash-left">
-            <div class="card">
-              <div class="card-head">
-                <h2>활성 게스트</h2>
-              </div>
-              <div class="guest-scroll" id="activeGuestList">
-                <div class="empty-state"><p>센서 데이터 대기 중...</p><small>웨어러블 센서가 연결되면 자동으로 표시됩니다</small></div>
-              </div>
-            </div>
-          </div>
+    <section class="page is-active" id="page-dashboard">
+      <div class="page-frame">
+        <div class="page-notice">
+          <span class="page-notice__icon">!</span>
+          <span id="dashboardNotice">실시간 알림이 없습니다.</span>
+        </div>
 
-          <!-- Right: Mini Map -->
-          <div class="dash-right">
-            <div class="card mini-map-card">
-              <div class="card-head"><h2>라이브 맵</h2><button class="btn-icon" onclick="switchPage('livemap')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button></div>
-              <div id="miniMap" class="mini-map"></div>
-            </div>
+        <div class="hero-card">
+          <div>
+            <p class="hero-card__eyebrow">Marine Guard Live Overview</p>
+            <h1>해양안전 실시간 모니터링</h1>
+            <p class="hero-card__text" id="heroSummary">현재 연결된 게스트 현황을 실시간으로 확인합니다.</p>
           </div>
         </div>
 
-        <!-- Bottom: Real-time Alerts (Horizontal scroll) -->
-        <div style="margin-top: 24px;">
-          <h2 style="font-size: 16px; font-weight: 700; margin-bottom: 12px; margin-left: 4px;">실시간 알림</h2>
-          <div class="alert-cards" id="alertCards">
-            <div class="empty-state"><p>이상 징후가 없습니다</p></div>
-          </div>
+        <div class="stats-grid">
+          <article class="metric-card">
+            <span class="metric-card__label">총 게스트</span>
+            <strong class="metric-card__value" id="statTotal">0</strong>
+          </article>
+          <article class="metric-card metric-card--safe">
+            <span class="metric-card__label">안전</span>
+            <strong class="metric-card__value" id="statNormal">0</strong>
+          </article>
+          <article class="metric-card metric-card--warn">
+            <span class="metric-card__label">주의</span>
+            <strong class="metric-card__value" id="statWarning">0</strong>
+          </article>
+          <article class="metric-card metric-card--danger">
+            <span class="metric-card__label">위험</span>
+            <strong class="metric-card__value" id="statDanger">0</strong>
+          </article>
         </div>
+
+        <div class="dashboard-grid">
+          <article class="panel-card">
+            <div class="panel-card__head">
+              <h2>활성 게스트</h2>
+              <span id="guestCountLabel">0명 연결됨</span>
+            </div>
+            <div class="guest-list" id="activeGuestList"></div>
+          </article>
+
+          <article class="panel-card panel-card--map">
+            <div class="panel-card__head">
+              <h2>라이브 맵</h2>
+              <button class="ghost-button" id="goLiveMapBtn" type="button">자세히 보기</button>
+            </div>
+            <div class="panel-map" id="miniMap"></div>
+          </article>
+        </div>
+
+        <article class="panel-card">
+          <div class="panel-card__head">
+            <h2>알림</h2>
+            <span id="alertCountLabel">0건</span>
+          </div>
+          <div class="alert-rail" id="alertCards"></div>
+        </article>
       </div>
     </section>
 
-    <!-- ════════ Live Map ════════ -->
     <section class="page" id="page-livemap">
-      <div class="livemap-layout">
-        <div class="map-panel">
-          <div class="map-topbar">
-            <h2>라이브 맵</h2>
-            <div class="map-actions">
-              <button class="btn-outline" id="btnRecenter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg>위치</button>
+      <div class="page-frame">
+        <div class="page-title">
+          <div>
+            <h1>라이브 맵</h1>
+            <p>실시간 위치와 주요 생체 상태를 확인합니다.</p>
+          </div>
+          <div class="page-actions">
+            <button class="ghost-button" id="btnRecenter" type="button">위치 재정렬</button>
+          </div>
+        </div>
+
+        <div class="live-layout">
+          <article class="panel-card panel-card--mainmap">
+            <div class="panel-card__head">
+              <h2>실시간 위치</h2>
               <select class="region-select" id="regionSelect">
-                <option>부산</option><option>포항</option><option>강원도</option><option>제주도</option>
+                <option value="all">전체 구역</option>
+                <option value="busan">부산</option>
+                <option value="gangwon">강원</option>
+                <option value="jeju">제주</option>
               </select>
             </div>
-          </div>
-          <div id="map"></div>
-        </div>
-        <div class="map-info-panel">
-          <div class="selected-guest-panel" id="selectedGuest">
-            <div class="panel-head"><h3>선택된 게스트</h3></div>
-            <div class="panel-body guest-empty-msg"><p>지도에서 센서를 선택하세요</p></div>
-          </div>
-          <div class="panel-head"><h3>배터리</h3></div>
-          <div class="battery-area" id="batteryArea">
-            <div class="battery-placeholder"></div>
-          </div>
-          <div class="guest-list-section">
-            <div class="panel-head"><h3>전체 게스트 목록</h3></div>
-            <div class="guest-grid" id="guestGrid">
-              <div class="empty-state small"><p>연결된 센서 없음</p></div>
-            </div>
-          </div>
+            <div class="panel-map panel-map--large" id="map"></div>
+          </article>
+
+          <aside class="live-sidebar">
+            <article class="panel-card" id="selectedGuest">
+              <div class="panel-card__head">
+                <h2>선택된 게스트</h2>
+              </div>
+              <div class="empty-box">지도에서 게스트를 선택하면 상세 정보가 표시됩니다.</div>
+            </article>
+
+            <article class="panel-card">
+              <div class="panel-card__head">
+                <h2>배터리</h2>
+              </div>
+              <div class="battery-box" id="batteryArea">
+                <div class="battery-box__empty">선택된 기기의 배터리 상태가 표시됩니다.</div>
+              </div>
+            </article>
+
+            <article class="panel-card">
+              <div class="panel-card__head">
+                <h2>전체 게스트 목록</h2>
+              </div>
+              <div class="guest-grid" id="guestGrid"></div>
+            </article>
+          </aside>
         </div>
       </div>
     </section>
 
-    <!-- ════════ Incidents ════════ -->
     <section class="page" id="page-incidents">
-      <div class="incidents-layout">
-        <div class="incidents-list-panel">
-          <div class="incidents-toolbar">
-            <div class="tab-group">
-              <button class="tab-btn" data-filter="all">어제</button>
-              <button class="tab-btn active" data-filter="all">오늘</button>
-            </div>
-            <div class="search-box">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" placeholder="검색..." id="incidentSearch">
-            </div>
-          </div>
-          <div class="incident-scroll" id="incidentList">
-            <div class="empty-state"><p>기록된 사건이 없습니다</p></div>
+      <div class="page-frame">
+        <div class="page-title">
+          <div>
+            <h1>사건 로그</h1>
+            <p>센서 기반 사고 이벤트와 대응 이력을 확인합니다.</p>
           </div>
         </div>
-        <div class="incident-detail-panel" id="incidentDetail">
-          <div class="empty-state"><p>사건을 선택하세요</p></div>
+
+        <div class="incident-layout">
+          <article class="panel-card incident-panel">
+            <div class="panel-card__head panel-card__head--stack">
+              <div class="tab-row" id="incidentTabs">
+                <button class="tab-button is-active" data-filter="all" type="button">전체</button>
+                <button class="tab-button" data-filter="active" type="button">진행중</button>
+                <button class="tab-button" data-filter="resolved" type="button">완료</button>
+              </div>
+              <label class="search-field">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <path d="M20 20L16.65 16.65"></path>
+                </svg>
+                <input type="text" id="incidentSearch" placeholder="사건 ID 또는 설명 검색">
+              </label>
+            </div>
+            <div class="incident-list" id="incidentList"></div>
+          </article>
+
+          <article class="panel-card incident-detail" id="incidentDetail">
+            <div class="empty-box">왼쪽 목록에서 사건을 선택하세요.</div>
+          </article>
         </div>
       </div>
     </section>
 
-    <!-- ════════ Devices ════════ -->
     <section class="page" id="page-devices">
-      <div class="page-title"><h1>디바이스 관리</h1><span>웨어러블 관리</span></div>
-      <div class="card"><div class="card-head"><h2>연결된 디바이스</h2></div>
-        <div class="device-grid" id="deviceList">
-          <div class="empty-state"><p>등록된 디바이스 없음</p></div>
+      <div class="page-frame">
+        <div class="page-title">
+          <div>
+            <h1>디바이스</h1>
+            <p>연결된 웨어러블 기기 상태와 최근 위치를 확인합니다.</p>
+          </div>
         </div>
+        <article class="panel-card">
+          <div class="panel-card__head">
+            <h2>기기 목록</h2>
+            <span id="deviceCountLabel">0대</span>
+          </div>
+          <div class="device-grid" id="deviceList"></div>
+        </article>
       </div>
     </section>
 
-    <!-- ════════ Reports ════════ -->
     <section class="page" id="page-reports">
-      <div class="page-title"><h1>리포트</h1><span>통계 & 분석</span></div>
-      <div class="card"><div class="card-head"><h2>통계 리포트</h2></div>
-        <div class="empty-state"><p>준비 중입니다</p></div>
+      <div class="page-frame">
+        <div class="page-title">
+          <div>
+            <h1>리포트</h1>
+            <p>요약 지표와 기간별 운영 통계를 제공합니다.</p>
+          </div>
+        </div>
+        <article class="panel-card placeholder-card">
+          <h2>리포트 화면 준비 중</h2>
+          <p>Figma 기준 세부 차트 화면은 다음 단계에서 연결할 수 있습니다.</p>
+        </article>
       </div>
     </section>
 
-    <!-- ════════ Settings ════════ -->
     <section class="page" id="page-settings">
-      <div class="page-title"><h1>설정</h1><span>시스템 설정</span></div>
-      <div class="card"><div class="card-head"><h2>시스템 설정</h2></div>
-        <div class="empty-state"><p>준비 중입니다</p></div>
+      <div class="page-frame">
+        <div class="page-title">
+          <div>
+            <h1>설정</h1>
+            <p>센서 연결, 지오펜스, 운영자 권한을 관리합니다.</p>
+          </div>
+        </div>
+        <article class="panel-card placeholder-card">
+          <h2>설정 화면 준비 중</h2>
+          <p>운영 설정과 사용자 권한 화면은 Figma 세부 프레임 기준으로 추가 가능합니다.</p>
+        </article>
       </div>
     </section>
   </main>
-
-  <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/socket.io/socket.io.js"></script>

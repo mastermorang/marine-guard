@@ -1,345 +1,780 @@
-/* ═══════════════════════════════════════════════
-   Marine Guard — App Logic (Figma-matched)
-   ═══════════════════════════════════════════════ */
 const socket = io();
-const sensors = {};
-let map = null, miniMap = null;
-let markers = {}, miniMarkers = {};
-let selectedSensorId = null, selectedIncidentId = null;
-let currentPage = 'dashboard';
-const avatarCls = ['','a2','a3','a4','a5'];
 
-// ═══════════ NAVIGATION ═══════════
-document.querySelectorAll('.nav-item').forEach(item => {
-  item.addEventListener('click', () => { switchPage(item.dataset.page); closeMobile(); });
-});
-function switchPage(page) {
-  currentPage = page;
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  const el = document.querySelector(`.nav-item[data-page="${page}"]`);
-  if (el) el.classList.add('active');
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  const pg = document.getElementById(`page-${page}`);
-  if (pg) pg.classList.add('active');
-  if (page === 'livemap' && map) setTimeout(() => map.invalidateSize(), 100);
-  if (page === 'incidents') loadIncidents();
-}
-document.getElementById('menuBtn')?.addEventListener('click', () => { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebarOverlay').classList.toggle('active'); });
-document.getElementById('sidebarOverlay')?.addEventListener('click', closeMobile);
-function closeMobile() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('active'); }
+const sensors = new Map();
+const markers = new Map();
+const miniMarkers = new Map();
 
-// ═══════════ MAP ═══════════
-function initMap() {
-  map = L.map('map', { center: [35.097, 128.994], zoom: 15, zoomControl: true });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
-  miniMap = L.map('miniMap', { center: [35.097, 128.994], zoom: 14, zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(miniMap);
-}
-function updateMarker(sensor, targetMap, targetMarkers) {
-  const { id, lat, lon, status } = sensor;
-  if (!lat || lat === 0) return;
-  const cls = `marker-${status}`;
-  const icon = L.divIcon({ html: `<div class="custom-marker ${cls}">${id}</div>`, iconSize: [28, 28], iconAnchor: [14, 14], className: '' });
-  if (targetMarkers[id]) { targetMarkers[id].setLatLng([lat, lon]).setIcon(icon); }
-  else { targetMarkers[id] = L.marker([lat, lon], { icon }).addTo(targetMap).on('click', () => { selectSensor(id); if (targetMap === miniMap) switchPage('livemap'); }); }
-  if (targetMap === map) targetMarkers[id].bindPopup(`<b>센서 ${id}</b><br>위도: ${lat.toFixed(6)}<br>경도: ${lon.toFixed(6)}<br>심박: ${sensor.bpm||'--'} BPM<br>상태: ${statusText(status)}`);
-}
-function recenterMap() {
-  const arr = Object.values(sensors).filter(s => s.lat && s.lat !== 0);
-  if (arr.length > 0) { const b = L.latLngBounds(arr.map(s => [s.lat, s.lon])); map.fitBounds(b, { padding: [50, 50], maxZoom: 16 }); miniMap.fitBounds(b, { padding: [20, 20], maxZoom: 15 }); }
-}
-document.getElementById('btnRecenter')?.addEventListener('click', recenterMap);
+let map;
+let miniMap;
+let currentPage = "dashboard";
+let selectedSensorId = null;
+let incidents = [];
+let selectedIncidentId = null;
+let incidentFilter = "all";
+let incidentQuery = "";
 
-// ═══════════ SENSOR UPDATE ═══════════
-function handleSensorUpdate(sensor) {
-  sensors[sensor.id] = sensor;
-  if (Object.keys(sensors).length === 1 && sensor.lat && sensor.lat !== 0) { map.setView([sensor.lat, sensor.lon], 15); miniMap.setView([sensor.lat, sensor.lon], 14); }
-  updateDashboard();
-  updateMarker(sensor, map, markers);
-  updateMarker(sensor, miniMap, miniMarkers);
-  updateGuestGrid();
-  if (selectedSensorId === sensor.id) renderSelectedGuest(sensor);
-  // Alert banner
-  const dng = Object.values(sensors).filter(s => s.status === 'danger');
-  const ab = document.getElementById('alertBanner');
-  const at = document.getElementById('alertText');
-  if (dng.length > 0) { ab.style.display = 'flex'; at.textContent = `${dng.length}건의 비상 상황이 감지되었습니다`; }
-  else { ab.style.display = 'none'; }
+const guestNames = [
+  "김철수",
+  "백승호",
+  "박민수",
+  "홍주원",
+  "정수진",
+  "최수영",
+  "정하늘",
+  "박서연",
+  "한지민",
+  "이도현"
+];
+
+const beachNames = [
+  "송정해수욕장",
+  "곽지해수욕장",
+  "다대포해수욕장",
+  "경포해수욕장",
+  "협재해수욕장",
+  "속초해수욕장"
+];
+
+function getSensorName(id) {
+  return guestNames[(Number(id) - 1) % guestNames.length] || `게스트 ${id}`;
 }
 
-// ═══════════ DASHBOARD ═══════════
-function updateDashboard() {
-  const all = Object.values(sensors);
-  document.getElementById('statTotal').textContent = all.length;
-  document.getElementById('statNormal').textContent = all.filter(s => s.status === 'normal').length;
-  document.getElementById('statWarning').textContent = all.filter(s => s.status === 'warning').length;
-  document.getElementById('statDanger').textContent = all.filter(s => s.status === 'danger').length;
-  renderActiveGuests();
-  renderAlertCards();
+function getBeachName(id) {
+  return beachNames[(Number(id) - 1) % beachNames.length] || "미확인 구역";
 }
 
-function renderActiveGuests() {
-  const c = document.getElementById('activeGuestList');
-  const all = Object.values(sensors);
-  if (!all.length) { c.innerHTML = '<div class="empty-state"><p>센서 데이터 대기 중...</p><small>웨어러블 센서가 연결되면 자동으로 표시됩니다</small></div>'; return; }
-  c.innerHTML = all.map(s => {
-    const av = avatarCls[(s.id - 1) % avatarCls.length];
-    const pri = s.status === 'danger' ? '<span class="priority-badge p1">P1</span>' : s.status === 'warning' ? '<span class="priority-badge p2">P2</span>' : '<span class="priority-badge ok">OK</span>';
-    const batt = Math.max(0, Math.min(100, 80 + Math.random() * 20)); // simulated
-    return `<div class="guest-row" onclick="selectSensorAndGo(${s.id})">
-      <div class="guest-avatar ${av}">${s.id}</div>
-      <div class="guest-meta">
-        <div class="guest-name">센서${s.id} ${pri}</div>
-        <div class="guest-sub">${s.finger === 1 ? s.bpm + ' BPM' : '미착용'}</div>
-      </div>
-      <div class="battery-icon${batt < 20 ? ' low' : ''}"><div class="battery-fill" style="width:${batt}%"></div></div>
-    </div>`;
-  }).join('');
+function isValidCoordinate(sensor) {
+  return Boolean(sensor && Number(sensor.lat) && Number(sensor.lon));
 }
 
-function renderAlertCards() {
-  const c = document.getElementById('alertCards');
-  const alerts = Object.values(sensors).filter(s => s.status === 'danger' || s.status === 'warning');
-  if (!alerts.length) { c.innerHTML = '<div class="empty-state"><p>이상 징후가 없습니다</p></div>'; return; }
-  const sorted = alerts.sort((a, b) => (a.status === 'danger' ? 0 : 1) - (b.status === 'danger' ? 0 : 1));
-  c.innerHTML = sorted.map(s => {
-    const isP1 = s.status === 'danger';
-    const msg = isP1 ? `심박수 ${s.bpm}bpm, HRV 급락 감지` : (s.finger === 0 ? '센서 미착용 상태' : '지속적 고심박, 휴식 필요');
-    const td = getTimeDiff(s.lastUpdate);
-    return `<div class="alert-card${isP1 ? ' danger-glow' : ''}" onclick="selectSensorAndGo(${s.id})">
-      <span class="priority-badge ${isP1 ? 'p1' : 'p2'}">${isP1 ? 'P1' : 'P2'}</span>
-      <div class="alert-card-name">센서 ${s.id}</div>
-      <div class="alert-card-desc">${isP1 ? '과부하' : '피로누적'} / 위험스코어 ${isP1 ? '85' : '63'}</div>
-      <div class="alert-card-msg">${msg}</div>
-      <div class="alert-card-footer">
-        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>${td}</span>
-        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>현재 위치</span>
-      </div>
-    </div>`;
-  }).join('');
+function getStatusClass(status) {
+  if (status === "danger") return "is-danger";
+  if (status === "warning") return "is-warn";
+  if (status === "offline") return "is-offline";
+  return "is-safe";
 }
 
-function selectSensorAndGo(id) { selectSensor(id); switchPage('livemap'); }
-function selectSensor(id) {
-  selectedSensorId = id;
-  const s = sensors[id];
-  if (s) { renderSelectedGuest(s); if (markers[id] && map) { map.setView([s.lat, s.lon], 16); markers[id].openPopup(); } }
+function getStatusText(status) {
+  if (status === "danger") return "위험";
+  if (status === "warning") return "주의";
+  if (status === "offline") return "오프라인";
+  return "안전";
 }
 
-// ═══════════ SELECTED GUEST (MAP SIDEBAR) ═══════════
-function renderSelectedGuest(s) {
-  const c = document.getElementById('selectedGuest');
-  const av = avatarCls[(s.id - 1) % avatarCls.length];
-  const pri = s.status === 'danger' ? 'p1' : s.status === 'warning' ? 'p2' : 'ok';
-  const score = s.status === 'danger' ? 85 : s.status === 'warning' ? 63 : 12;
-  const scoreColor = s.status === 'danger' ? 'var(--danger)' : s.status === 'warning' ? 'var(--warn)' : 'var(--safe)';
-  const bpmVal = s.finger === 1 ? s.bpm : '--';
-  const bpmColor = s.bpm > 120 ? 'var(--danger)' : s.bpm > 100 ? 'var(--warn)' : 'var(--primary)';
-  const circ = 2 * Math.PI * 34;
-  const offset = circ - (score / 100) * circ;
-
-  c.innerHTML = `
-    <div class="panel-head"><h3>선택된 게스트</h3></div>
-    <div class="guest-detail-content">
-      <div class="guest-detail-header">
-        <div class="guest-avatar ${av}" style="width:48px;height:48px;font-size:16px;">${s.id}</div>
-        <div><div class="guest-name" style="font-size:15px;">센서 ${s.id} <span class="priority-badge ${pri}">${pri.toUpperCase()}</span></div>
-        <div class="guest-sub">위도: ${s.lat?.toFixed(5)||'--'} · 경도: ${s.lon?.toFixed(5)||'--'}</div></div>
-      </div>
-      <div class="gauge-grid">
-        <div class="gauge-box">
-          <div class="gauge-label">위험 스코어</div>
-          <div class="gauge-circle">
-            <svg viewBox="0 0 80 80"><circle class="bg" cx="40" cy="40" r="34"/><circle class="fg" cx="40" cy="40" r="34" stroke="${scoreColor}" stroke-dasharray="${circ}" stroke-dashoffset="${offset}"/></svg>
-            <div class="gauge-val" style="color:${scoreColor}">${score}<small>점</small></div>
-          </div>
-        </div>
-        <div class="gauge-box">
-          <div class="gauge-label">심박수</div>
-          <div class="bpm-display" style="color:${bpmColor}">- - -<small> bpm</small></div>
-          <div style="font-size:11px;color:var(--text3);">${bpmVal !== '--' ? bpmVal + ' BPM' : '측정 대기'}</div>
-        </div>
-      </div>
-    </div>`;
+function getPriorityText(status) {
+  if (status === "danger") return "P1";
+  if (status === "warning") return "P2";
+  return "OK";
 }
 
-// ═══════════ GUEST GRID ═══════════
-function updateGuestGrid() {
-  const c = document.getElementById('guestGrid');
-  const all = Object.values(sensors);
-  if (!all.length) { c.innerHTML = '<div class="empty-state small"><p>연결된 센서 없음</p></div>'; return; }
-  c.innerHTML = all.map(s => {
-    const dotCls = s.status === 'danger' ? 'danger' : s.status === 'warning' ? 'warn' : 'safe';
-    const bpm = s.finger === 1 ? s.bpm + 'bpm' : '--';
-    const score = s.status === 'danger' ? '85점' : s.status === 'warning' ? '63점' : '12점';
-    return `<div class="gg-item" onclick="selectSensor(${s.id})">
-      <span class="gg-dot ${dotCls}"></span>
-      <span class="gg-name">센서${s.id}</span>
-      <span class="gg-bpm">${bpm}</span>
-      <span class="gg-score">${score}</span>
-    </div>`;
-  }).join('');
-  // Devices page
-  renderDevices();
-}
-
-function renderDevices() {
-  const c = document.getElementById('deviceList');
-  const all = Object.values(sensors);
-  if (!all.length) { c.innerHTML = '<div class="empty-state"><p>등록된 디바이스 없음</p></div>'; return; }
-  c.innerHTML = all.map(s => {
-    const av = avatarCls[(s.id - 1) % avatarCls.length];
-    const st = s.connected ? s.status : 'offline';
-    return `<div class="device-card status-${st}">
-      <div class="guest-avatar ${av}" style="width:36px;height:36px;font-size:12px;">${s.id}</div>
-      <div class="guest-meta"><div class="guest-name">센서 ${s.id}</div><div class="guest-sub">${s.lat?.toFixed(4)||'--'}, ${s.lon?.toFixed(4)||'--'}</div></div>
-      <span class="priority-badge ${st === 'danger' ? 'p1' : st === 'warning' ? 'p2' : 'ok'}">${statusText(st)}</span>
-    </div>`;
-  }).join('');
-}
-
-// ═══════════ INCIDENTS ═══════════
-async function loadIncidents() {
-  try {
-    const res = await fetch('/api/incidents');
-    const inc = await res.json();
-    renderIncidentList(inc);
-  } catch (e) {}
-}
-
-function renderIncidentList(incidents) {
-  const c = document.getElementById('incidentList');
-  if (!incidents.length) { c.innerHTML = '<div class="empty-state"><p>기록된 사건이 없습니다</p></div>'; return; }
-  c.innerHTML = incidents.map(i => {
-    const badgeCls = i.status === 'active' ? 'active' : 'resolved';
-    const badgeText = i.status === 'active' ? '진행중' : '처리완료';
-    return `<div class="inc-item${selectedIncidentId === i.incident_id ? ' selected' : ''}" onclick="selectIncident('${i.incident_id}', ${JSON.stringify(i).replace(/"/g, '&quot;')})">
-      <div class="inc-item-head"><span class="inc-id">${i.incident_id}</span><span class="inc-badge ${badgeCls}">${badgeText}</span></div>
-      <div class="inc-desc">${i.description}</div>
-      <div class="inc-meta"><span>${formatTime(i.created_at)}</span></div>
-    </div>`;
-  }).join('');
-}
-
-function selectIncident(id, data) {
-  selectedIncidentId = id;
-  document.querySelectorAll('.inc-item').forEach(el => el.classList.remove('selected'));
-  event?.currentTarget?.classList.add('selected');
-  const c = document.getElementById('incidentDetail');
-  const av = avatarCls[((data.sensor_id || 1) - 1) % avatarCls.length];
-  c.innerHTML = `
-    <div class="inc-detail-head">
-      <div class="inc-detail-id">${data.incident_id}</div>
-      <div class="inc-detail-person">
-        <div class="guest-avatar ${av}" style="width:40px;height:40px;font-size:13px;">${data.sensor_id || '?'}</div>
-        <div><div class="guest-name">센서 ${data.sensor_id || '?'} <span class="inc-badge ${data.status === 'active' ? 'active' : 'resolved'}">${data.status === 'active' ? '주의' : '처리완료'}</span></div>
-        <div class="guest-sub">${data.description}</div></div>
-      </div>
-    </div>
-    <div class="inc-detail-body">
-      <div class="detail-section">
-        <div class="dispatch-btn" onclick="this.textContent='요원 배정 완료'">요원 긴급 배정</div>
-      </div>
-      <div class="detail-section">
-        <h4>배정 요원</h4>
-        <div class="assigned-person">
-          <div class="guest-avatar" style="width:48px;height:48px;font-size:14px;background:linear-gradient(135deg,#6366F1,#818CF8);">👤</div>
-          <div><div class="guest-name">김코치</div><div class="guest-sub">현장 요원</div></div>
-        </div>
-      </div>
-      <div class="detail-section">
-        <h4>타임라인</h4>
-        <div class="timeline-list">
-          <div class="timeline-item"><span class="timeline-time">${formatTime(data.created_at)}</span><span class="timeline-text">위험 인지</span></div>
-          <div class="timeline-item"><span class="timeline-time">${formatTime(data.created_at)}</span><span class="timeline-text">요원 배정</span></div>
-          <div class="timeline-item"><span class="timeline-time">${formatTime(data.created_at)}</span><span class="timeline-text">게스트 확인</span></div>
-          ${data.resolved_at ? `<div class="timeline-item"><span class="timeline-time">${formatTime(data.resolved_at)}</span><span class="timeline-text">완료</span></div>` : ''}
-        </div>
-      </div>
-      <div class="detail-section memo-section">
-        <h4>메모</h4>
-        <textarea placeholder="메모를 입력하세요..."></textarea>
-      </div>
-    </div>`;
-}
-
-// ═══════════ CONNECTION STATUS ═══════════
-function updateConnectionStatus(status) {
-  const dot = document.querySelector('#connectionStatus .status-dot');
-  const text = document.querySelector('#connectionStatus .status-text');
-  const mDot = document.querySelector('#mobileStatus .status-dot');
-  if (status.connected) {
-    dot?.classList.replace('offline','online');
-    mDot?.classList.replace('offline','online');
-    if(text) text.textContent = `${status.port} 연결됨`;
-    showToast(`✅ ${status.port} 수신기 연결됨`, 'success');
-  } else {
-    dot?.classList.replace('online','offline');
-    mDot?.classList.replace('online','offline');
-    if(text) text.textContent = status.message || (status.port ? `${status.port} 끊김` : '연결 대기');
-    if (status.port) showToast(`⚠ ${status.message || '수신기 연결 끊김'}`, 'warning');
+function getRiskScore(sensor) {
+  if (sensor.status === "danger") return 85;
+  if (sensor.status === "warning") {
+    return sensor.finger === 0 ? 45 : 63;
   }
+
+  const bpm = Number(sensor.bpm) || 82;
+  return Math.max(5, Math.min(38, Math.round((bpm - 65) * 0.55)));
 }
 
-// ═══════════ TOAST NOTIFICATION ═══════════
-function showToast(msg, type = 'info') {
-  let container = document.getElementById('toastContainer');
+function getBatteryLevel(sensor) {
+  const seed = (Number(sensor.id) * 19) % 61;
+  return Math.max(18, Math.min(94, 33 + seed));
+}
+
+function getAvatarClass(id) {
+  const classes = ["", "is-alt", "is-alt-2", "is-alt-3", "is-alt-4"];
+  return classes[(Number(id) - 1) % classes.length];
+}
+
+function formatRelativeTime(timestamp) {
+  if (!timestamp) return "방금 전";
+
+  const target = typeof timestamp === "number" ? timestamp : new Date(timestamp).getTime();
+  const seconds = Math.max(0, Math.floor((Date.now() - target) / 1000));
+
+  if (seconds < 60) return `${Math.max(1, seconds)}초 전`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}분 전`;
+  return `${Math.floor(seconds / 3600)}시간 전`;
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(
+    date.getDate()
+  ).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes()
+  ).padStart(2, "0")}`;
+}
+
+function getSensorSubtitle(sensor) {
+  if (sensor.finger === 0) return "손가락 센서 미착용";
+  return `심박 ${Number(sensor.bpm) || 0} bpm`;
+}
+
+function getAlertDescription(sensor) {
+  if (sensor.status === "danger") return `심박수 ${Number(sensor.bpm) || 0}bpm, HRV 급락 감지`;
+  if (sensor.finger === 0) return "센서 착용 불량 또는 측정 오류";
+  return "지속적 고심박, 휴식 필요";
+}
+
+function getAlertScoreText(sensor) {
+  if (sensor.status === "danger") return `과부하 / 위험스코어 ${getRiskScore(sensor)}`;
+  if (sensor.finger === 0) return `지오펜스 이탈 / 위험스코어 ${getRiskScore(sensor)}`;
+  return `피로누적 / 위험스코어 ${getRiskScore(sensor)}`;
+}
+
+function createMarkerIcon(status) {
+  return L.divIcon({
+    className: "",
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+    html: `<div class="map-marker ${getStatusClass(status)}"></div>`
+  });
+}
+
+function showToast(message, type = "info") {
+  let container = document.getElementById("toastContainer");
+
   if (!container) {
-    container = document.createElement('div');
-    container.id = 'toastContainer';
-    container.style.cssText = 'position:fixed;top:70px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;';
+    container = document.createElement("div");
+    container.id = "toastContainer";
+    container.style.cssText =
+      "position:fixed;right:18px;top:18px;z-index:1000;display:grid;gap:10px;";
     document.body.appendChild(container);
   }
-  const toast = document.createElement('div');
-  const colors = { success: '#22C55E', warning: '#F59E0B', error: '#EF4444', info: '#0A7E8C' };
-  toast.style.cssText = `padding:12px 18px;border-radius:10px;font-size:13px;font-weight:500;color:white;background:${colors[type]||colors.info};box-shadow:0 4px 12px rgba(0,0,0,0.15);backdrop-filter:blur(8px);transform:translateX(100%);transition:all .3s ease;max-width:320px;font-family:inherit;`;
-  toast.textContent = msg;
+
+  const colors = {
+    success: "#18b26b",
+    warning: "#f7b731",
+    error: "#ef4444",
+    info: "#0f6189"
+  };
+
+  const toast = document.createElement("div");
+  toast.style.cssText = [
+    "min-width:220px",
+    "max-width:320px",
+    "padding:12px 14px",
+    "border-radius:14px",
+    "color:#fff",
+    "font-size:12px",
+    "font-weight:700",
+    "box-shadow:0 12px 24px rgba(10,38,59,.18)",
+    `background:${colors[type] || colors.info}`,
+    "transform:translateY(-8px)",
+    "opacity:0",
+    "transition:transform .18s ease, opacity .18s ease"
+  ].join(";");
+  toast.textContent = message;
   container.appendChild(toast);
-  requestAnimationFrame(() => { toast.style.transform = 'translateX(0)'; });
+
+  requestAnimationFrame(() => {
+    toast.style.transform = "translateY(0)";
+    toast.style.opacity = "1";
+  });
+
   setTimeout(() => {
-    toast.style.transform = 'translateX(120%)';
-    toast.style.opacity = '0';
-    setTimeout(() => toast.remove(), 300);
-  }, 3500);
+    toast.style.transform = "translateY(-8px)";
+    toast.style.opacity = "0";
+    setTimeout(() => toast.remove(), 200);
+  }, 2600);
 }
 
-// ═══════════ HELPERS ═══════════
-function statusText(s) { return { normal: '정상', warning: '주의', danger: '비상', offline: '오프라인' }[s] || s; }
-function getTimeDiff(ts) { if (!ts) return ''; const d = Math.floor((Date.now() - ts) / 1000); if (d < 5) return '방금'; if (d < 60) return `${d}초 전`; if (d < 3600) return `${Math.floor(d / 60)}분 전`; return `${Math.floor(d / 3600)}시간 전`; }
-function formatTime(dt) { if (!dt) return ''; const d = new Date(dt); return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+function updateStatusIndicator(status) {
+  const sidebarDot = document.getElementById("sidebarStatusDot");
+  const mobileDot = document.getElementById("mobileStatusDot");
+  const sidebarText = document.getElementById("sidebarStatusText");
+  const isOnline = Boolean(status && status.connected);
 
-// ═══════════ SOCKET.IO ═══════════
-socket.on('connect', () => { console.log('WS connected'); showToast('서버 연결 완료', 'success'); });
-socket.on('initialState', (list) => {
-  list.forEach(s => { sensors[s.id] = s; updateMarker(s, map, markers); updateMarker(s, miniMap, miniMarkers); });
-  updateDashboard(); updateGuestGrid();
-  if (list.length) recenterMap();
+  [sidebarDot, mobileDot].forEach((dot) => {
+    if (!dot) return;
+    dot.classList.toggle("is-online", isOnline);
+    dot.classList.toggle("is-offline", !isOnline);
+  });
+
+  if (sidebarText) {
+    if (isOnline) {
+      sidebarText.textContent = `${status.port || "시리얼"} 연결됨`;
+    } else {
+      sidebarText.textContent = status?.message || "센서 대기 중";
+    }
+  }
+}
+
+function switchPage(page) {
+  currentPage = page;
+
+  document.querySelectorAll(".page").forEach((node) => {
+    node.classList.toggle("is-active", node.id === `page-${page}`);
+  });
+
+  document.querySelectorAll(".nav-item").forEach((node) => {
+    node.classList.toggle("active", node.dataset.page === page);
+  });
+
+  closeSidebar();
+
+  if (page === "livemap") {
+    setTimeout(() => {
+      map?.invalidateSize();
+      miniMap?.invalidateSize();
+    }, 100);
+  }
+
+  if (page === "incidents") {
+    loadIncidents();
+  }
+}
+
+window.switchPage = switchPage;
+
+function openSidebar() {
+  document.getElementById("sidebar")?.classList.add("is-open");
+  document.getElementById("sidebarBackdrop")?.classList.add("is-visible");
+}
+
+function closeSidebar() {
+  document.getElementById("sidebar")?.classList.remove("is-open");
+  document.getElementById("sidebarBackdrop")?.classList.remove("is-visible");
+}
+
+function initNavigation() {
+  document.querySelectorAll(".nav-item").forEach((node) => {
+    node.addEventListener("click", () => switchPage(node.dataset.page));
+  });
+
+  document.getElementById("menuBtn")?.addEventListener("click", openSidebar);
+  document.getElementById("sidebarBackdrop")?.addEventListener("click", closeSidebar);
+  document.getElementById("goLiveMapBtn")?.addEventListener("click", () => switchPage("livemap"));
+
+  document.getElementById("incidentSearch")?.addEventListener("input", (event) => {
+    incidentQuery = event.target.value.trim().toLowerCase();
+    renderIncidentList();
+  });
+
+  document.getElementById("incidentTabs")?.addEventListener("click", (event) => {
+    const button = event.target.closest(".tab-button");
+    if (!button) return;
+
+    incidentFilter = button.dataset.filter;
+    document.querySelectorAll(".tab-button").forEach((node) => {
+      node.classList.toggle("is-active", node === button);
+    });
+    renderIncidentList();
+  });
+
+  document.getElementById("btnRecenter")?.addEventListener("click", recenterToSensors);
+}
+
+function initMaps() {
+  miniMap = L.map("miniMap", {
+    zoomControl: false,
+    attributionControl: false,
+    dragging: false,
+    scrollWheelZoom: false
+  }).setView([35.1595, 129.1603], 12);
+
+  map = L.map("map", {
+    zoomControl: true,
+    attributionControl: false
+  }).setView([35.1595, 129.1603], 12);
+
+  const tileLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19
+  });
+
+  const tileLayerMini = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19
+  });
+
+  tileLayer.addTo(map);
+  tileLayerMini.addTo(miniMap);
+}
+
+function syncMarker(sensor, targetMap, store) {
+  if (!isValidCoordinate(sensor)) return;
+
+  const position = [Number(sensor.lat), Number(sensor.lon)];
+  const marker = store.get(sensor.id);
+  const popupHtml = `
+    <strong>${getSensorName(sensor.id)}</strong><br>
+    ${getBeachName(sensor.id)}<br>
+    심박: ${sensor.finger === 0 ? "미측정" : `${Number(sensor.bpm) || 0} bpm`}<br>
+    상태: ${getStatusText(sensor.status)}
+  `;
+
+  if (marker) {
+    marker.setLatLng(position);
+    marker.setIcon(createMarkerIcon(sensor.status));
+    marker.setPopupContent(popupHtml);
+    return;
+  }
+
+  const nextMarker = L.marker(position, {
+    icon: createMarkerIcon(sensor.status)
+  }).addTo(targetMap);
+
+  nextMarker.bindPopup(popupHtml);
+  nextMarker.on("click", () => {
+    selectSensor(sensor.id);
+    if (targetMap === miniMap) switchPage("livemap");
+  });
+
+  store.set(sensor.id, nextMarker);
+}
+
+function recenterToSensors() {
+  const points = Array.from(sensors.values())
+    .filter(isValidCoordinate)
+    .map((sensor) => [Number(sensor.lat), Number(sensor.lon)]);
+
+  if (!points.length) return;
+
+  const bounds = L.latLngBounds(points);
+  map?.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+  miniMap?.fitBounds(bounds, { padding: [24, 24], maxZoom: 14 });
+}
+
+function upsertSensor(sensor) {
+  sensors.set(sensor.id, sensor);
+  syncMarker(sensor, map, markers);
+  syncMarker(sensor, miniMap, miniMarkers);
+}
+
+function sortSensorsByPriority(list) {
+  const rank = { danger: 0, warning: 1, normal: 2, offline: 3 };
+  return [...list].sort((left, right) => {
+    const diff = rank[left.status] - rank[right.status];
+    if (diff !== 0) return diff;
+    return Number(left.id) - Number(right.id);
+  });
+}
+
+function renderDashboard() {
+  const allSensors = sortSensorsByPriority(Array.from(sensors.values()));
+  const normalCount = allSensors.filter((sensor) => sensor.status === "normal").length;
+  const warningCount = allSensors.filter((sensor) => sensor.status === "warning").length;
+  const dangerCount = allSensors.filter((sensor) => sensor.status === "danger").length;
+  const alertSensors = allSensors.filter((sensor) => sensor.status !== "normal" && sensor.status !== "offline");
+
+  document.getElementById("statTotal").textContent = String(allSensors.length);
+  document.getElementById("statNormal").textContent = String(normalCount);
+  document.getElementById("statWarning").textContent = String(warningCount);
+  document.getElementById("statDanger").textContent = String(dangerCount);
+  document.getElementById("guestCountLabel").textContent = `${allSensors.length}명 연결됨`;
+  document.getElementById("alertCountLabel").textContent = `${alertSensors.length}건`;
+
+  document.getElementById("heroSummary").textContent =
+    allSensors.length > 0
+      ? `현재 ${allSensors.length}명의 게스트가 모니터링 중이며, 위험 ${dangerCount}명, 주의 ${warningCount}명 상태입니다.`
+      : "현재 연결된 센서가 없습니다. 기기가 연결되면 실시간 현황이 자동으로 갱신됩니다.";
+
+  const banner = document.getElementById("alertBanner");
+  const alertText = document.getElementById("alertText");
+  const dashboardNotice = document.getElementById("dashboardNotice");
+
+  if (alertSensors.length > 0) {
+    banner.hidden = false;
+    alertText.textContent = `${alertSensors.length}건의 즉시 확인이 필요한 알림이 있습니다.`;
+    dashboardNotice.textContent = `${dangerCount}건 위험, ${warningCount}건 주의 상태가 감지되었습니다.`;
+  } else {
+    banner.hidden = true;
+    dashboardNotice.textContent = "실시간 알림이 없습니다.";
+  }
+
+  renderActiveGuestList(allSensors);
+  renderAlertCards(alertSensors);
+  renderGuestGrid(allSensors);
+  renderDeviceList(allSensors);
+}
+
+function renderActiveGuestList(sensorList) {
+  const container = document.getElementById("activeGuestList");
+
+  if (!sensorList.length) {
+    container.innerHTML = `<div class="empty-state-card">연결된 게스트가 없습니다.<br>센서가 연결되면 목록이 자동으로 채워집니다.</div>`;
+    return;
+  }
+
+  container.innerHTML = sensorList
+    .map((sensor) => {
+      const battery = getBatteryLevel(sensor);
+      const batteryClass =
+        battery < 30 ? "is-danger" : battery < 50 ? "is-warn" : "";
+
+      return `
+        <button class="guest-row" type="button" data-select-sensor="${sensor.id}">
+          <span class="avatar-badge ${getAvatarClass(sensor.id)}">${String(sensor.id).padStart(2, "0")}</span>
+          <span class="guest-row__copy">
+            <strong>${getSensorName(sensor.id)} <span class="priority-pill ${getStatusClass(sensor.status)}">${getPriorityText(
+              sensor.status
+            )}</span></strong>
+            <span>${getSensorSubtitle(sensor)} · ${getBeachName(sensor.id)}</span>
+          </span>
+          <span class="battery-meter ${batteryClass}">
+            <span class="battery-meter__fill" style="width:${battery}%"></span>
+          </span>
+        </button>
+      `;
+    })
+    .join("");
+
+  container.querySelectorAll("[data-select-sensor]").forEach((node) => {
+    node.addEventListener("click", () => {
+      selectSensor(node.dataset.selectSensor);
+      switchPage("livemap");
+    });
+  });
+}
+
+function renderAlertCards(alertSensors) {
+  const container = document.getElementById("alertCards");
+
+  if (!alertSensors.length) {
+    container.innerHTML =
+      '<div class="empty-state-card">현재 확인이 필요한 위험 알림이 없습니다.</div>';
+    return;
+  }
+
+  container.innerHTML = alertSensors
+    .map((sensor) => {
+      const dangerClass = sensor.status === "danger" ? "alert-card--danger" : "";
+      return `
+        <button class="alert-card ${dangerClass}" type="button" data-select-sensor="${sensor.id}">
+          <span class="priority-pill ${getStatusClass(sensor.status)}">${getPriorityText(sensor.status)}</span>
+          <div class="alert-card__name">${getSensorName(sensor.id)}</div>
+          <div class="alert-card__score">${getAlertScoreText(sensor)}</div>
+          <div class="alert-card__body">${getAlertDescription(sensor)}</div>
+          <div class="alert-card__meta">
+            <span>${formatRelativeTime(sensor.lastUpdate)}</span>
+            <span>${getBeachName(sensor.id)}</span>
+          </div>
+        </button>
+      `;
+    })
+    .join("");
+
+  container.querySelectorAll("[data-select-sensor]").forEach((node) => {
+    node.addEventListener("click", () => {
+      selectSensor(node.dataset.selectSensor);
+      switchPage("livemap");
+    });
+  });
+}
+
+function renderGuestGrid(sensorList) {
+  const container = document.getElementById("guestGrid");
+
+  if (!sensorList.length) {
+    container.innerHTML =
+      '<div class="empty-state-card">게스트 데이터가 없습니다.</div>';
+    return;
+  }
+
+  container.innerHTML = sensorList
+    .map((sensor) => {
+      const isSelected = String(sensor.id) === String(selectedSensorId);
+      return `
+        <button
+          class="guest-chip"
+          type="button"
+          data-select-sensor="${sensor.id}"
+          style="${isSelected ? "outline:2px solid rgba(12,79,116,.24)" : ""}"
+        >
+          <span class="guest-chip__dot ${getStatusClass(sensor.status)}"></span>
+          <span>
+            <strong>${getSensorName(sensor.id)}</strong>
+            <span>${sensor.finger === 0 ? "미측정" : `${Number(sensor.bpm) || 0} bpm`}</span>
+          </span>
+          <span class="guest-chip__score">${getRiskScore(sensor)}점</span>
+        </button>
+      `;
+    })
+    .join("");
+
+  container.querySelectorAll("[data-select-sensor]").forEach((node) => {
+    node.addEventListener("click", () => selectSensor(node.dataset.selectSensor));
+  });
+}
+
+function renderSelectedGuest(sensor) {
+  const container = document.getElementById("selectedGuest");
+
+  if (!sensor) {
+    container.innerHTML = `
+      <div class="panel-card__head">
+        <h2>선택된 게스트</h2>
+      </div>
+      <div class="empty-box">지도에서 게스트를 선택하면 상세 정보가 표시됩니다.</div>
+    `;
+    renderBattery(null);
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="panel-card__head">
+      <h2>선택된 게스트</h2>
+      <span>${getStatusText(sensor.status)}</span>
+    </div>
+    <div class="selected-guest">
+      <div class="selected-guest__head">
+        <span class="avatar-badge ${getAvatarClass(sensor.id)}">${String(sensor.id).padStart(2, "0")}</span>
+        <div class="selected-guest__copy">
+          <strong>${getSensorName(sensor.id)} <span class="priority-pill ${getStatusClass(sensor.status)}">${getPriorityText(
+            sensor.status
+          )}</span></strong>
+          <span>${getBeachName(sensor.id)} · 최근 업데이트 ${formatRelativeTime(sensor.lastUpdate)}</span>
+        </div>
+      </div>
+      <div class="vital-grid">
+        <div class="vital-card">
+          <div class="vital-card__label">위험 스코어</div>
+          <div class="vital-card__value">${getRiskScore(sensor)}점</div>
+          <div class="vital-card__hint">${getAlertScoreText(sensor)}</div>
+        </div>
+        <div class="vital-card">
+          <div class="vital-card__label">심박수</div>
+          <div class="vital-card__value">${sensor.finger === 0 ? "--" : Number(sensor.bpm) || 0}</div>
+          <div class="vital-card__hint">${sensor.finger === 0 ? "센서 미착용" : "bpm 기준 실시간 수집"}</div>
+        </div>
+      </div>
+      <div class="detail-block">
+        <h3>위치 정보</h3>
+        <p>위도 ${Number(sensor.lat || 0).toFixed(5)} / 경도 ${Number(sensor.lon || 0).toFixed(5)}</p>
+        <p>${getBeachName(sensor.id)} 기준 위치 추적 중</p>
+      </div>
+    </div>
+  `;
+
+  renderBattery(sensor);
+}
+
+function renderBattery(sensor) {
+  const container = document.getElementById("batteryArea");
+
+  if (!sensor) {
+    container.innerHTML =
+      '<div class="battery-box__empty">선택된 기기의 배터리 상태가 표시됩니다.</div>';
+    return;
+  }
+
+  const battery = getBatteryLevel(sensor);
+  container.innerHTML = `
+    <div class="battery-bar">
+      <div class="battery-bar__meta">
+        <span>${getSensorName(sensor.id)}</span>
+        <span>${battery}%</span>
+      </div>
+      <div class="battery-bar__track">
+        <div class="battery-bar__fill" style="width:${battery}%"></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderDeviceList(sensorList) {
+  const container = document.getElementById("deviceList");
+  const label = document.getElementById("deviceCountLabel");
+  label.textContent = `${sensorList.length}대`;
+
+  if (!sensorList.length) {
+    container.innerHTML =
+      '<div class="empty-state-card">등록된 디바이스가 없습니다.</div>';
+    return;
+  }
+
+  container.innerHTML = sensorList
+    .map((sensor) => {
+      return `
+        <article class="device-card">
+          <span class="avatar-badge ${getAvatarClass(sensor.id)}">${String(sensor.id).padStart(2, "0")}</span>
+          <div class="device-card__copy">
+            <strong>${getSensorName(sensor.id)}</strong>
+            <span>${getBeachName(sensor.id)} · ${isValidCoordinate(sensor) ? `${Number(sensor.lat).toFixed(4)}, ${Number(sensor.lon).toFixed(4)}` : "위치 미수신"}</span>
+          </div>
+          <span class="priority-pill ${getStatusClass(sensor.status)}">${getStatusText(sensor.status)}</span>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function selectSensor(sensorId) {
+  selectedSensorId = String(sensorId);
+  const sensor = sensors.get(Number(sensorId)) || sensors.get(String(sensorId));
+
+  if (sensor && isValidCoordinate(sensor)) {
+    map?.setView([Number(sensor.lat), Number(sensor.lon)], 15);
+    markers.get(sensor.id)?.openPopup();
+  }
+
+  renderSelectedGuest(sensor);
+  renderDashboard();
+}
+
+function renderIncidentList() {
+  const container = document.getElementById("incidentList");
+
+  let filtered = [...incidents];
+
+  if (incidentFilter !== "all") {
+    filtered = filtered.filter((incident) => incident.status === incidentFilter);
+  }
+
+  if (incidentQuery) {
+    filtered = filtered.filter((incident) => {
+      const text = `${incident.incident_id} ${incident.description} ${incident.type}`.toLowerCase();
+      return text.includes(incidentQuery);
+    });
+  }
+
+  if (!filtered.length) {
+    container.innerHTML =
+      '<div class="empty-state-card">표시할 사건 로그가 없습니다.</div>';
+    return;
+  }
+
+  container.innerHTML = filtered
+    .map((incident) => {
+      const selected = incident.incident_id === selectedIncidentId ? "is-selected" : "";
+      return `
+        <button class="incident-item ${selected}" type="button" data-incident-id="${incident.incident_id}">
+          <div class="incident-item__top">
+            <span class="incident-item__id">${incident.incident_id}</span>
+            <span class="priority-pill ${incident.status === "active" ? "is-danger" : "is-safe"}">${
+              incident.status === "active" ? "진행중" : "완료"
+            }</span>
+          </div>
+          <div class="incident-item__desc">${incident.description || "설명 없음"}</div>
+          <div class="incident-item__meta">${formatDateTime(incident.created_at)}</div>
+        </button>
+      `;
+    })
+    .join("");
+
+  container.querySelectorAll("[data-incident-id]").forEach((node) => {
+    node.addEventListener("click", () => {
+      const incident = incidents.find((item) => item.incident_id === node.dataset.incidentId);
+      selectIncident(incident);
+    });
+  });
+}
+
+function renderIncidentDetail(incident) {
+  const container = document.getElementById("incidentDetail");
+
+  if (!incident) {
+    container.innerHTML = '<div class="empty-box">왼쪽 목록에서 사건을 선택하세요.</div>';
+    return;
+  }
+
+  const sensorName = getSensorName(incident.sensor_id || 1);
+  const assignedAgent = incident.status === "active" ? "김코치" : "처리 완료";
+
+  container.innerHTML = `
+    <div class="panel-card__head">
+      <h2>${incident.incident_id}</h2>
+      <span>${incident.status === "active" ? "사건 대응 중" : "사건 처리 완료"}</span>
+    </div>
+    <div class="incident-detail__body">
+      <div class="detail-block">
+        <h3>게스트 정보</h3>
+        <p>${sensorName} / 센서 ${incident.sensor_id || "-"}</p>
+        <p>${incident.description || "상세 설명 없음"}</p>
+      </div>
+      <div class="detail-block">
+        <h3>배정 인력</h3>
+        <p>${assignedAgent}</p>
+      </div>
+      <div class="detail-block">
+        <h3>타임라인</h3>
+        <ul class="detail-list">
+          <li>${formatDateTime(incident.created_at)} 사건 감지</li>
+          <li>${formatDateTime(incident.created_at)} 운영자 알림 전송</li>
+          <li>${incident.resolved_at ? `${formatDateTime(incident.resolved_at)} 사건 종료` : "현재 추가 조치 대기 중"}</li>
+        </ul>
+      </div>
+    </div>
+  `;
+}
+
+function selectIncident(incident) {
+  selectedIncidentId = incident?.incident_id || null;
+  renderIncidentList();
+  renderIncidentDetail(incident);
+}
+
+async function loadIncidents() {
+  try {
+    const response = await fetch("/api/incidents");
+    incidents = await response.json();
+    renderIncidentList();
+
+    if (selectedIncidentId) {
+      const active = incidents.find((incident) => incident.incident_id === selectedIncidentId);
+      renderIncidentDetail(active || null);
+    }
+  } catch (error) {
+    document.getElementById("incidentList").innerHTML =
+      '<div class="empty-state-card">사건 로그를 불러오지 못했습니다.</div>';
+  }
+}
+
+socket.on("connect", () => {
+  showToast("서버와 연결되었습니다.", "success");
 });
-socket.on('sensorUpdate', handleSensorUpdate);
-socket.on('serialStatus', updateConnectionStatus);
 
-// ─── Auto-center map on first GPS ───
-socket.on('autoCenter', (coords) => {
-  console.log('🗺️ 기준 좌표 자동 설정:', coords);
-  if (map) map.setView([coords.lat, coords.lon], 15);
-  if (miniMap) miniMap.setView([coords.lat, coords.lon], 14);
-  showToast(`📍 기준 좌표 설정: ${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`, 'info');
+socket.on("disconnect", () => {
+  updateStatusIndicator({ connected: false, message: "서버 연결 끊김" });
+  showToast("서버 연결이 끊어졌습니다.", "error");
 });
 
-// ─── Device auto-register notification ───
-socket.on('deviceRegistered', (device) => {
-  console.log('🆕 새 디바이스 등록:', device);
-  showToast(`🆕 ${device.name} 자동 등록 완료`, 'success');
+socket.on("serialStatus", (status) => {
+  updateStatusIndicator(status);
 });
 
-socket.on('disconnect', () => {
-  updateConnectionStatus({ connected: false, port: null });
-  showToast('서버 연결 끊김', 'error');
+socket.on("initialState", (list) => {
+  list.forEach(upsertSensor);
+  renderDashboard();
+
+  if (list.length > 0) {
+    recenterToSensors();
+    if (!selectedSensorId) {
+      selectSensor(list[0].id);
+    }
+  }
 });
 
-// ═══════════ INIT ═══════════
-document.addEventListener('DOMContentLoaded', () => {
-  initMap();
+socket.on("sensorUpdate", (sensor) => {
+  upsertSensor(sensor);
+  renderDashboard();
+
+  if (String(sensor.id) === String(selectedSensorId)) {
+    renderSelectedGuest(sensor);
+  }
+});
+
+socket.on("deviceRegistered", (device) => {
+  showToast(`${device.name} 기기가 자동 등록되었습니다.`, "success");
+});
+
+socket.on("autoCenter", (coords) => {
+  if (coords && Number(coords.lat) && Number(coords.lon)) {
+    map?.setView([Number(coords.lat), Number(coords.lon)], 15);
+    miniMap?.setView([Number(coords.lat), Number(coords.lon)], 13);
+  }
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+  initNavigation();
+  initMaps();
+  renderDashboard();
+  renderSelectedGuest(null);
+  renderIncidentDetail(null);
   loadIncidents();
-  setInterval(() => { if (currentPage === 'dashboard') renderActiveGuests(); }, 5000);
 });
