@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marine Guard — 모니터링 서비스 플랫폼</title>
+  <meta name="description" content="마린가드 웨어러블 센서 모니터링 서비스 플랫폼 — 실시간 위치 추적, 심박수, 비상 알림">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+KR:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Sidebar -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <div class="logo-icon-wrap">
+          <svg class="logo-icon" viewBox="0 0 40 40" fill="none">
+            <circle cx="20" cy="20" r="18" fill="#4F46E5"/>
+            <path d="M12 25C14 18 18 14 20 12C22 14 26 18 28 25" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M15 28C17 23 19 20 20 18C21 20 23 23 25 28" stroke="white" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="logo-text">
+          <span class="logo-title">MARINE GUARD</span>
+        </div>
+      </div>
+    </div>
+    <ul class="nav-menu">
+      <li class="nav-item active" data-page="dashboard">
+        <div class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        </div>
+        <div class="nav-label">
+          <span class="nav-title">대시보드</span>
+          <span class="nav-subtitle">실시간 현황</span>
+        </div>
+      </li>
+      <li class="nav-item" data-page="livemap">
+        <div class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+        </div>
+        <div class="nav-label">
+          <span class="nav-title">라이브 맵</span>
+          <span class="nav-subtitle">실시간 위치</span>
+        </div>
+      </li>
+      <li class="nav-item" data-page="incidents">
+        <div class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </div>
+        <div class="nav-label">
+          <span class="nav-title">사건 로그</span>
+          <span class="nav-subtitle">사건 관리</span>
+        </div>
+      </li>
+      <li class="nav-item" data-page="devices">
+        <div class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/></svg>
+        </div>
+        <div class="nav-label">
+          <span class="nav-title">디바이스</span>
+          <span class="nav-subtitle">웨어러블 관리</span>
+        </div>
+      </li>
+      <li class="nav-item" data-page="reports">
+        <div class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        </div>
+        <div class="nav-label">
+          <span class="nav-title">리포트</span>
+          <span class="nav-subtitle">통계 & 분석</span>
+        </div>
+      </li>
+      <li class="nav-item" data-page="settings">
+        <div class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </div>
+        <div class="nav-label">
+          <span class="nav-title">설정</span>
+          <span class="nav-subtitle">시스템 설정</span>
+        </div>
+      </li>
+    </ul>
+    <div class="sidebar-footer">
+      <div class="connection-status" id="connectionStatus">
+        <span class="status-dot offline"></span>
+        <span class="status-text">연결 대기</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Mobile Header -->
+  <header class="mobile-header" id="mobileHeader">
+    <button class="menu-btn" id="menuBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <span class="mobile-title">MARINE GUARD</span>
+    <div class="mobile-status" id="mobileStatus"><span class="status-dot offline"></span></div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <!-- Top Bar -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="alert-banner" id="alertBanner" style="display:none;">
+          <span class="alert-type">이탈</span>
+          <span id="alertText"></span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="user-info" id="userInfo">
+          <div class="user-avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <div class="user-detail">
+            <span class="user-name">홍길동</span>
+            <span class="user-email">hong@gmail.com</span>
+          </div>
+          <svg class="user-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ Dashboard ════════ -->
+    <section class="page active" id="page-dashboard">
+      <div class="dashboard-body">
+        <!-- Main Dashboard Grid -->
+        <div class="dash-grid">
+          <!-- Left: Active Guests -->
+          <div class="dash-left">
+            <div class="card">
+              <div class="card-head">
+                <h2>활성 게스트</h2>
+              </div>
+              <div class="guest-scroll" id="activeGuestList">
+                <div class="empty-state"><p>센서 데이터 대기 중...</p><small>웨어러블 센서가 연결되면 자동으로 표시됩니다</small></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Mini Map -->
+          <div class="dash-right">
+            <div class="card mini-map-card">
+              <div class="card-head"><h2>라이브 맵</h2><button class="btn-icon" onclick="switchPage('livemap')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button></div>
+              <div id="miniMap" class="mini-map"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom: Real-time Alerts (Horizontal scroll) -->
+        <div style="margin-top: 24px;">
+          <h2 style="font-size: 16px; font-weight: 700; margin-bottom: 12px; margin-left: 4px;">실시간 알림</h2>
+          <div class="alert-cards" id="alertCards">
+            <div class="empty-state"><p>이상 징후가 없습니다</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════ Live Map ════════ -->
+    <section class="page" id="page-livemap">
+      <div class="livemap-layout">
+        <div class="map-panel">
+          <div class="map-topbar">
+            <h2>라이브 맵</h2>
+            <div class="map-actions">
+              <button class="btn-outline" id="btnRecenter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg>위치</button>
+              <select class="region-select" id="regionSelect">
+                <option>부산</option><option>포항</option><option>강원도</option><option>제주도</option>
+              </select>
+            </div>
+          </div>
+          <div id="map"></div>
+        </div>
+        <div class="map-info-panel">
+          <div class="selected-guest-panel" id="selectedGuest">
+            <div class="panel-head"><h3>선택된 게스트</h3></div>
+            <div class="panel-body guest-empty-msg"><p>지도에서 센서를 선택하세요</p></div>
+          </div>
+          <div class="panel-head"><h3>배터리</h3></div>
+          <div class="battery-area" id="batteryArea">
+            <div class="battery-placeholder"></div>
+          </div>
+          <div class="guest-list-section">
+            <div class="panel-head"><h3>전체 게스트 목록</h3></div>
+            <div class="guest-grid" id="guestGrid">
+              <div class="empty-state small"><p>연결된 센서 없음</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════ Incidents ════════ -->
+    <section class="page" id="page-incidents">
+      <div class="incidents-layout">
+        <div class="incidents-list-panel">
+          <div class="incidents-toolbar">
+            <div class="tab-group">
+              <button class="tab-btn" data-filter="all">어제</button>
+              <button class="tab-btn active" data-filter="all">오늘</button>
+            </div>
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" placeholder="검색..." id="incidentSearch">
+            </div>
+          </div>
+          <div class="incident-scroll" id="incidentList">
+            <div class="empty-state"><p>기록된 사건이 없습니다</p></div>
+          </div>
+        </div>
+        <div class="incident-detail-panel" id="incidentDetail">
+          <div class="empty-state"><p>사건을 선택하세요</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════ Devices ════════ -->
+    <section class="page" id="page-devices">
+      <div class="page-title"><h1>디바이스 관리</h1><span>웨어러블 관리</span></div>
+      <div class="card"><div class="card-head"><h2>연결된 디바이스</h2></div>
+        <div class="device-grid" id="deviceList">
+          <div class="empty-state"><p>등록된 디바이스 없음</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════ Reports ════════ -->
+    <section class="page" id="page-reports">
+      <div class="page-title"><h1>리포트</h1><span>통계 & 분석</span></div>
+      <div class="card"><div class="card-head"><h2>통계 리포트</h2></div>
+        <div class="empty-state"><p>준비 중입니다</p></div>
+      </div>
+    </section>
+
+    <!-- ════════ Settings ════════ -->
+    <section class="page" id="page-settings">
+      <div class="page-title"><h1>설정</h1><span>시스템 설정</span></div>
+      <div class="card"><div class="card-head"><h2>시스템 설정</h2></div>
+        <div class="empty-state"><p>준비 중입니다</p></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

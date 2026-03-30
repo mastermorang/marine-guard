@@ -1,0 +1,23 @@
+.venv/
+
+# Node runtime artifacts
+web/node_modules/
+web/marineguard.db
+web/marineguard.db-shm
+web/marineguard.db-wal
+
+# Bundled local JRE
+java/
+
+# Build outputs and local executables
+*.class
+*.exe
+*.jar.bak
+
+# Local documents and large media outside the source tree
+*.mp4
+*.pdf
+
+# OS/editor noise
+Thumbs.db
+desktop.ini
