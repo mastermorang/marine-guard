@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: marine-guard-api
+    runtime: node
+    rootDir: web
+    buildCommand: npm install
+    startCommand: npm run start:backend
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SERVE_STATIC
+        value: "false"
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: INGEST_TOKEN
+        generateValue: true
+
+previews:
+  generation: off
