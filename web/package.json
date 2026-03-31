@@ -6,17 +6,30 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "dev:frontend": "vite --config frontend\\vite.config.js",
     "start:backend": "node backend/server.js",
     "start:collector": "node collector/index.js",
     "dev:collector": "node collector/index.js",
+    "build:frontend": "vite build --config frontend\\vite.config.js",
     "build:pages": "node scripts/build-pages.js"
   },
   "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "pg": "^8.13.1",
     "serialport": "^12.0.0",
+    "socket.io-client": "^4.8.1",
     "socket.io": "^4.7.4",
-    "better-sqlite3": "^11.0.0"
+    "better-sqlite3": "^11.0.0",
+    "leaflet": "^1.9.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.4.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.3.2"
   }
 }
