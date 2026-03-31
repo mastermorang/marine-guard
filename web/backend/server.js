@@ -37,6 +37,20 @@ let mapCentered = false;
 let collectorHeartbeat = 0;
 let collectorLabel = process.env.COLLECTOR_LABEL || "현장 수집기";
 let lastCollectorStatus = "";
+const guestCatalog = [
+  { id: 1, name: "김철수", age: 32 },
+  { id: 2, name: "박서연", age: 24 },
+  { id: 3, name: "백승호", age: 33 },
+  { id: 4, name: "박민수", age: 28 },
+  { id: 5, name: "이준호", age: 35 },
+  { id: 6, name: "홍주원", age: 29 },
+  { id: 7, name: "정수진", age: 25 },
+  { id: 8, name: "최수영", age: 30 },
+  { id: 9, name: "정하늘", age: 27 },
+  { id: 10, name: "김영희", age: 31 },
+  { id: 11, name: "이정민", age: 29 },
+  { id: 12, name: "오지현", age: 26 }
+];
 
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "1mb" }));
@@ -130,7 +144,13 @@ async function processSensorPayload(rawPayload = {}) {
     name,
     lat,
     lon,
-    battery
+    battery,
+    receiverLabel: rawPayload.collectorLabel || collectorLabel,
+    connected: true,
+    status: nextSensor.status,
+    bpm,
+    emg,
+    finger
   });
 
   if (now - nextSensor._lastDbLog > 10000) {
@@ -183,6 +203,38 @@ function getPublicSensors() {
   }));
 }
 
+function getGuestById(id) {
+  return guestCatalog.find((guest) => Number(guest.id) === Number(id)) || null;
+}
+
+async function getManagedDevices() {
+  const storedDevices = await store.getDevices();
+
+  return storedDevices.map((device) => {
+    const live = sensorState.get(Number(device.id));
+    const assignedGuest = getGuestById(device.assigned_guest_id);
+    const connected = live ? Boolean(live.connected) : Boolean(device.connected);
+    const status = live?.status || device.status || (connected ? "normal" : "offline");
+
+    return {
+      id: Number(device.id),
+      name: live?.name || device.name || `센서${device.id}`,
+      lat: live?.lat ?? device.last_lat ?? 0,
+      lon: live?.lon ?? device.last_lon ?? 0,
+      bpm: live?.bpm ?? device.last_bpm ?? 0,
+      emg: live?.emg ?? device.last_emg ?? 0,
+      finger: live?.finger ?? device.last_finger ?? 0,
+      battery: live?.battery ?? device.battery ?? null,
+      connected,
+      status,
+      lastUpdate: live?.lastUpdate || device.last_seen || device.registered_at || null,
+      receiverLabel: live ? collectorLabel : device.receiver_label || null,
+      assignedGuestId: device.assigned_guest_id || null,
+      assignedGuest
+    };
+  });
+}
+
 app.get("/api/health", async (req, res) => {
   res.json({
     ok: true,
@@ -196,9 +248,39 @@ app.get("/api/sensors", async (req, res) => {
   res.json(getPublicSensors());
 });
 
+app.get("/api/guests", async (req, res) => {
+  res.json(guestCatalog);
+});
+
 app.get("/api/devices", async (req, res, next) => {
   try {
-    res.json(await store.getDevices());
+    res.json(await getManagedDevices());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/devices/:id/assign", async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const guestId =
+      req.body?.guestId === null || req.body?.guestId === undefined || req.body?.guestId === ""
+        ? null
+        : Number(req.body.guestId);
+
+    if (!Number.isInteger(id) || id < 1) {
+      res.status(400).json({ error: "Invalid device id" });
+      return;
+    }
+
+    if (guestId !== null && !getGuestById(guestId)) {
+      res.status(400).json({ error: "Invalid guest id" });
+      return;
+    }
+
+    await store.updateDeviceAssignment(id, guestId);
+    io.emit("deviceAssignmentChanged", { id, guestId });
+    res.json({ ok: true });
   } catch (error) {
     next(error);
   }

@@ -51,6 +51,7 @@ const people = [
   ["이정민", 29],
   ["오지현", 26]
 ];
+const guestOptions = people.map(([name, age], index) => ({ id: index + 1, name, age }));
 const beaches = ["송정해수욕장", "광안리해수욕장", "다대포해수욕장", "경포해수욕장", "중문해수욕장", "협재해수욕장"];
 const regions = ["부산", "포항", "강원도", "제주도"];
 const coaches = ["박코치", "김코치", "이코치", "정코치"];
@@ -70,12 +71,32 @@ function person(id) {
   const [name, age] = people[(Number(id) - 1 + people.length) % people.length];
   return { name, age };
 }
+function guestById(id) {
+  if (!id) return null;
+  return guestOptions.find((guest) => Number(guest.id) === Number(id)) || null;
+}
+function assignedGuest(device) {
+  return device?.assignedGuest || guestById(device?.assignedGuestId) || null;
+}
+function displayName(device) {
+  return assignedGuest(device)?.name || device?.name || `센서${device?.id ?? "-"}`;
+}
+function displayAge(device) {
+  return assignedGuest(device)?.age ?? null;
+}
 function beach(id) {
   return beaches[(Number(id) - 1 + beaches.length) % beaches.length];
+}
+function deviceBeach(device) {
+  return beach(device?.assignedGuestId || device?.id || 1);
 }
 function guestPortrait(id) {
   const index = ((Number(id) - 1) % Object.keys(guestPortraits).length) + 1;
   return guestPortraits[index] || topProfileImage;
+}
+function devicePortrait(device) {
+  const guest = assignedGuest(device);
+  return guest ? guestPortrait(guest.id) : null;
 }
 function coach(id) {
   return coaches[(Number(id) - 1 + coaches.length) % coaches.length];
@@ -131,8 +152,11 @@ function deviceAvailability(sensor) {
   if (sensor.status === "danger" || sensor.status === "offline") {
     return { label: "정비중", pillClass: "bg-[rgba(227,20,20,0.63)] text-white", iconColor: "#e31414" };
   }
-  if (sensor.connected) {
+  if (sensor.connected && sensor.assignedGuestId) {
     return { label: "대여중", pillClass: "bg-[rgba(5,64,103,0.49)] text-white", iconColor: sensor.status === "warning" ? "#ffcf0f" : "#29bf5b" };
+  }
+  if (sensor.connected) {
+    return { label: "미할당", pillClass: "bg-[rgba(148,163,184,0.58)] text-white", iconColor: "#64748b" };
   }
   return { label: "사용가능", pillClass: "bg-[rgba(28,121,28,0.46)] text-white", iconColor: "#29bf5b" };
 }
@@ -140,25 +164,56 @@ function deviceAvailability(sensor) {
 export default function App() {
   const [page, setPage] = useState("dashboard");
   const [mobileNav, setMobileNav] = useState(false);
-  const [sensors, setSensors] = useState([]);
+  const [devices, setDevices] = useState([]);
   const [incidents, setIncidents] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [serial, setSerial] = useState({ connected: false, message: "연결 대기 중" });
   const [filter, setFilter] = useState("today");
   const [query, setQuery] = useState("");
   const [region, setRegion] = useState("부산");
+  const [guests, setGuests] = useState(guestOptions);
+
+  async function refreshDevices() {
+    const response = await fetch(apiUrl("/api/devices"));
+    if (!response.ok) return;
+
+    const list = await response.json();
+    setDevices(list);
+    setSelectedId((current) => current || String(list.find((item) => item.connected)?.id || list[0]?.id || ""));
+  }
+
+  async function assignDevice(deviceId, guestId) {
+    const response = await fetch(apiUrl(`/api/devices/${deviceId}/assign`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ guestId: guestId || null })
+    });
+
+    if (!response.ok) {
+      throw new Error("디바이스 할당 저장에 실패했습니다.");
+    }
+
+    await refreshDevices();
+  }
 
   useEffect(() => {
     async function load() {
       try {
-        const [s, i, c] = await Promise.all([fetch(apiUrl("/api/sensors")), fetch(apiUrl("/api/incidents")), fetch(apiUrl("/api/collector/status"))]);
-        if (s.ok) {
-          const list = await s.json();
-          setSensors(list);
-          if (list[0]) setSelectedId(String(list[0].id));
+        const [d, i, c, g] = await Promise.all([
+          fetch(apiUrl("/api/devices")),
+          fetch(apiUrl("/api/incidents")),
+          fetch(apiUrl("/api/collector/status")),
+          fetch(apiUrl("/api/guests"))
+        ]);
+
+        if (d.ok) {
+          const list = await d.json();
+          setDevices(list);
+          if (list[0]) setSelectedId(String(list.find((item) => item.connected)?.id || list[0].id));
         }
         if (i.ok) setIncidents(await i.json());
         if (c.ok) setSerial(await c.json());
+        if (g.ok) setGuests(await g.json());
       } catch (error) {
         console.error(error);
       }
@@ -168,30 +223,22 @@ export default function App() {
 
   useEffect(() => {
     const socket = io(socketUrl, { path: socketPath, transports: ["websocket", "polling"] });
-    socket.on("initialState", (list) => {
-      setSensors(list);
-      setSelectedId((current) => current || String(list[0]?.id || ""));
-    });
-    socket.on("sensorUpdate", (sensor) => {
-      setSensors((current) => {
-        const next = [...current];
-        const index = next.findIndex((item) => String(item.id) === String(sensor.id));
-        if (index >= 0) next[index] = sensor;
-        else next.push(sensor);
-        return next;
-      });
-    });
+    socket.on("initialState", refreshDevices);
+    socket.on("sensorUpdate", refreshDevices);
+    socket.on("deviceRegistered", refreshDevices);
+    socket.on("deviceAssignmentChanged", refreshDevices);
     socket.on("serialStatus", setSerial);
     socket.on("disconnect", () => setSerial({ connected: false, message: "수집기 연결이 끊어졌습니다." }));
     return () => socket.disconnect();
   }, []);
 
-  const ordered = sortSensors(sensors);
-  const liveSensors = ordered.length ? ordered : fallbackSensors;
-  const liveIncidents = incidents.length ? incidents : fallbackIncidents;
-  const selected = liveSensors.find((item) => String(item.id) === String(selectedId)) || liveSensors[0] || null;
-  const alerts = liveSensors.filter((item) => item.status !== "normal" && item.status !== "offline");
-  const shownIncidents = liveIncidents
+  const ordered = sortSensors(devices);
+  const connectedDevices = ordered.filter((item) => item.connected);
+  const activeGuests = connectedDevices.filter((item) => item.assignedGuestId);
+  const trackedDevices = connectedDevices.length ? connectedDevices : ordered;
+  const selected = trackedDevices.find((item) => String(item.id) === String(selectedId)) || trackedDevices[0] || null;
+  const alerts = activeGuests.filter((item) => item.status !== "normal" && item.status !== "offline");
+  const shownIncidents = incidents
     .filter((item) => {
       if (filter === "all") return true;
       const date = new Date(item.created_at);
@@ -241,11 +288,11 @@ export default function App() {
         <div className="w-full px-3 pb-6 pt-3 md:px-5 md:pb-8 md:pt-5 xl:px-0 xl:pr-6 xl:pt-6">
           <div className="min-h-[785px] w-full rounded-[20px] bg-[#f2f4f8] px-4 py-[17px] shadow-panel xl:px-[16px]">
             <TopBar alerts={alerts} />
-            {page === "dashboard" ? <Dashboard ordered={liveSensors} alerts={alerts} region={region} onRegion={setRegion} onSelect={(id) => { setSelectedId(String(id)); setPage("livemap"); }} /> : null}
-            {page === "livemap" ? <LiveMap selected={selected} ordered={liveSensors} region={region} onRegion={setRegion} onSelect={(id) => setSelectedId(String(id))} /> : null}
+            {page === "dashboard" ? <Dashboard ordered={activeGuests} alerts={alerts} region={region} onRegion={setRegion} onSelect={(id) => { setSelectedId(String(id)); setPage("livemap"); }} /> : null}
+            {page === "livemap" ? <LiveMap selected={selected} ordered={trackedDevices} region={region} onRegion={setRegion} onSelect={(id) => setSelectedId(String(id))} /> : null}
             {page === "incidents" ? <Incidents incidents={shownIncidents} filter={filter} query={query} onFilter={setFilter} onQuery={setQuery} /> : null}
-            {page === "devices" ? <Devices ordered={liveSensors} /> : null}
-            {page === "reports" ? <Reports ordered={liveSensors} incidents={liveIncidents} /> : null}
+            {page === "devices" ? <Devices ordered={ordered} guests={guests} onAssign={assignDevice} /> : null}
+            {page === "reports" ? <Reports ordered={trackedDevices} incidents={incidents} /> : null}
             {page === "settings" ? <Settings serial={serial} /> : null}
           </div>
         </div>
@@ -287,12 +334,16 @@ function Dashboard({ ordered, alerts, region, onRegion, onSelect }) {
     <div className="flex flex-col gap-4">
       <section className="overflow-hidden rounded-[12px] px-[31px] py-[20px] text-white" style={{ backgroundImage: `linear-gradient(rgba(17,63,103,.24), rgba(17,63,103,.24)), url(${heroImage})`, backgroundPosition: "center", backgroundSize: "cover" }}>
         <div className="text-[17px] font-medium leading-[1.2]">해양안전 실시간 모니터링</div>
-        <div className="mt-2 text-[13px] text-white/90">현재 {ordered.length || 24}명의 게스트가 안전하게 해양레저를 즐기고 있습니다</div>
+        <div className="mt-2 text-[13px] text-white/90">현재 {ordered.length}명의 게스트가 디바이스에 할당되어 추적 중입니다</div>
       </section>
       <div className="grid gap-4 xl:grid-cols-[minmax(340px,1.02fr)_minmax(460px,1.63fr)]">
         <div className="rounded-[12px] bg-white px-[13px] pb-[14px] pt-[15px] shadow-soft">
           <div className="mb-[15px] text-[15px] font-medium">활성 게스트</div>
-          <div className="grid max-h-[306px] gap-[6px] overflow-auto pr-1 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">{ordered.slice(0, 8).map((sensor) => <GuestRow key={sensor.id} sensor={sensor} onClick={() => onSelect(sensor.id)} />)}</div>
+          {ordered.length ? (
+            <div className="grid max-h-[306px] gap-[6px] overflow-auto pr-1 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">{ordered.slice(0, 8).map((sensor) => <GuestRow key={sensor.id} sensor={sensor} onClick={() => onSelect(sensor.id)} />)}</div>
+          ) : (
+            <div className="flex h-[306px] items-center justify-center rounded-[9px] bg-[#f8fafc] text-[12px] text-[#8c8c8c]">할당된 연결 디바이스가 없어 활성 게스트가 없습니다.</div>
+          )}
         </div>
         <div className="rounded-[12px] bg-white px-[13px] pb-[15px] pt-[10px] shadow-soft">
           <div className="mb-[13px] flex items-center justify-between">
@@ -304,7 +355,11 @@ function Dashboard({ ordered, alerts, region, onRegion, onSelect }) {
       </div>
       <div className="rounded-[12px] bg-white p-[13px] shadow-soft">
         <div className="mb-4 text-[15px] font-medium">알림</div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">{(alerts.length ? alerts : ordered.slice(0, 4)).map((sensor) => <AlertCard key={sensor.id} sensor={sensor} />)}</div>
+        {alerts.length ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">{alerts.map((sensor) => <AlertCard key={sensor.id} sensor={sensor} />)}</div>
+        ) : (
+          <div className="flex h-[131px] items-center justify-center rounded-[9px] bg-[#f8fafc] text-[12px] text-[#8c8c8c]">현재 경고 상태의 할당 디바이스가 없습니다.</div>
+        )}
       </div>
     </div>
   );
@@ -322,12 +377,12 @@ function LiveMap({ selected, ordered, region, onRegion, onSelect }) {
       </div>
       <div className="flex flex-col gap-[13px]">
         <div className="rounded-[12px] bg-white px-[13px] pb-[13px] pt-[15px] shadow-soft">
-          <div className="text-[15px] font-medium">선택된 게스트</div>
+          <div className="text-[15px] font-medium">선택된 디바이스</div>
           <div className="mt-4 rounded-[9px] bg-[#f8fafc] px-4 py-3">
             <div className="flex items-center gap-3">
-              <Avatar src={selected ? guestPortrait(selected.id) : null} label={selected ? person(selected.id).name.slice(0, 1) : "-"} />
+              <Avatar src={selected ? devicePortrait(selected) : null} label={selected ? displayName(selected).slice(0, 1) : "-"} />
               <div className="text-[11px] leading-[12px]">
-                <div className="font-medium">{selected ? person(selected.id).name : "-"}</div>
+                <div className="font-medium">{selected ? displayName(selected) : "선택된 디바이스 없음"}</div>
                 <div className="mt-1 text-[#a1a1a1]">마지막 업데이트 : {selected ? when(selected.lastUpdate) : "-"}</div>
               </div>
               <MoreDots className="ml-auto h-4 w-4 text-[#a1a1a1]" />
@@ -341,8 +396,12 @@ function LiveMap({ selected, ordered, region, onRegion, onSelect }) {
         </div>
         <Panel title="배터리"><BatteryWave level={battery(selected)} /></Panel>
         <div className="rounded-[12px] bg-white px-[13px] pb-[13px] pt-[15px] shadow-soft">
-          <div className="mb-3 text-[13px] font-medium">전체 게스트 목록</div>
-          <div className="grid gap-2 sm:grid-cols-2">{ordered.slice(0, 10).map((sensor) => <Compact key={sensor.id} sensor={sensor} onClick={() => onSelect(String(sensor.id))} />)}</div>
+          <div className="mb-3 text-[13px] font-medium">연결 디바이스 목록</div>
+          {ordered.length ? (
+            <div className="grid gap-2 sm:grid-cols-2">{ordered.slice(0, 10).map((sensor) => <Compact key={sensor.id} sensor={sensor} onClick={() => onSelect(String(sensor.id))} />)}</div>
+          ) : (
+            <div className="flex h-[180px] items-center justify-center rounded-[9px] bg-[#f8fafc] text-[12px] text-[#8c8c8c]">현재 연결된 디바이스가 없습니다.</div>
+          )}
         </div>
       </div>
     </div>
@@ -370,26 +429,41 @@ function Incidents({ incidents, filter, query, onFilter, onQuery }) {
   );
 }
 
-function Devices({ ordered }) {
+function Devices({ ordered, guests, onAssign }) {
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const filtered = ordered.filter((sensor) => {
+    if (statusFilter === "assigned" && !sensor.assignedGuestId) return false;
+    if (statusFilter === "available" && sensor.connected) return false;
+    if (statusFilter === "maintenance" && sensor.status !== "danger" && sensor.status !== "offline") return false;
+    if (!search.trim()) return true;
+
+    const term = search.trim().toLowerCase();
+    return `${sensor.id} ${sensor.name} ${displayName(sensor)} ${sensor.receiverLabel || ""}`.toLowerCase().includes(term);
+  });
+
   return (
     <div className="flex flex-col gap-[18px]">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="text-[13px] font-medium leading-[16px]">웨어러블 기기 목록</div>
-          <div className="mt-[3px] text-[10px] text-[#b5b5b6]">등록된 디바이스의 상태와 정보를 관리합니다</div>
+          <div className="mt-[3px] text-[10px] text-[#b5b5b6]">송수신기 연결 상태와 게스트 할당을 관리합니다</div>
         </div>
         <div className="flex flex-wrap items-center gap-[9px] lg:justify-end">
           <div className="flex h-[25px] items-center gap-[2px] rounded-[12px] bg-[#f2f4f8] px-[4px]">
-            <button type="button" className="h-[19px] rounded-[9.5px] bg-white px-[18px] text-[9px] text-[#21272a]">전체</button>
-            <button type="button" className="px-[14px] text-[9px] text-[#21272a]">대여중</button>
-            <button type="button" className="px-[10px] text-[9px] text-[#21272a]">사용가능</button>
-            <button type="button" className="px-[14px] text-[9px] text-[#21272a]">정비</button>
+            <button type="button" className={`h-[19px] rounded-[9.5px] px-[18px] text-[9px] ${statusFilter === "all" ? "bg-white text-[#21272a]" : "text-[#21272a]"}`} onClick={() => setStatusFilter("all")}>전체</button>
+            <button type="button" className={`px-[14px] text-[9px] ${statusFilter === "assigned" ? "rounded-[9.5px] bg-white text-[#21272a]" : "text-[#21272a]"}`} onClick={() => setStatusFilter("assigned")}>대여중</button>
+            <button type="button" className={`px-[10px] text-[9px] ${statusFilter === "available" ? "rounded-[9.5px] bg-white text-[#21272a]" : "text-[#21272a]"}`} onClick={() => setStatusFilter("available")}>사용가능</button>
+            <button type="button" className={`px-[14px] text-[9px] ${statusFilter === "maintenance" ? "rounded-[9.5px] bg-white text-[#21272a]" : "text-[#21272a]"}`} onClick={() => setStatusFilter("maintenance")}>정비</button>
           </div>
-          <label className="flex h-[22px] w-full items-center gap-2 rounded-[6px] border border-[#dbdbdb] bg-white px-3 text-[10px] text-[#a1a1a1] sm:w-[154px]"><Search /><input className="w-full border-0 bg-transparent p-0 text-[10px] outline-none" placeholder="검색..." /></label>
+          <label className="flex h-[22px] w-full items-center gap-2 rounded-[6px] border border-[#dbdbdb] bg-white px-3 text-[10px] text-[#a1a1a1] sm:w-[190px]"><Search /><input className="w-full border-0 bg-transparent p-0 text-[10px] outline-none" placeholder="디바이스 / 게스트 검색" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
         </div>
       </div>
-      <div className="grid gap-[6px] md:grid-cols-2 xl:grid-cols-[repeat(4,1fr)]">{ordered.slice(0, 12).map((sensor) => <Device key={sensor.id} sensor={sensor} />)}</div>
-      <div className="flex items-center justify-center gap-7 pt-[2px] text-[#113f67]"><span className="text-[20px]">‹</span><div className="flex gap-7"><span className="h-[9px] w-[9px] rounded-full border border-[#113f67]" /><span className="h-[9px] w-[9px] rounded-full bg-[#113f67]" /><span className="h-[9px] w-[9px] rounded-full border border-[#113f67]" /></div><span className="text-[20px]">›</span></div>
+      {filtered.length ? (
+        <div className="grid gap-[6px] md:grid-cols-2 xl:grid-cols-[repeat(4,1fr)]">{filtered.slice(0, 12).map((sensor) => <Device key={sensor.id} sensor={sensor} guests={guests} onAssign={onAssign} />)}</div>
+      ) : (
+        <div className="flex h-[220px] items-center justify-center rounded-[15px] bg-white text-[12px] text-[#8c8c8c] shadow-soft">조건에 맞는 디바이스가 없습니다.</div>
+      )}
     </div>
   );
 }
@@ -530,7 +604,7 @@ function MapBox({ sensors, zoom, focus }) {
         existing.setLatLng(pos);
         existing.setIcon(marker(sensor));
       } else {
-        const created = L.marker(pos, { icon: marker(sensor) }).addTo(map).bindPopup(`<strong>${person(sensor.id).name}</strong><br>${beach(sensor.id)}<br>${statusText(sensor.status)}`);
+        const created = L.marker(pos, { icon: marker(sensor) }).addTo(map).bindPopup(`<strong>${displayName(sensor)}</strong><br>${deviceBeach(sensor)}<br>${statusText(sensor.status)}`);
         markers.current.set(key, created);
       }
     });
@@ -547,13 +621,13 @@ function MapBox({ sensors, zoom, focus }) {
 }
 
 function GuestRow({ sensor, onClick }) {
-  const p = person(sensor.id);
+  const p = assignedGuest(sensor) || { name: displayName(sensor), age: displayAge(sensor) };
   const [label, style] = priority(sensor);
   return (
     <button type="button" className="flex items-center gap-[13px] rounded-[9px] bg-[#f2f4f8] px-[15.5px] py-[5.5px] text-left" onClick={onClick}>
-      <Avatar src={guestPortrait(sensor.id)} label={p.name.slice(0, 1)} />
+      <Avatar src={devicePortrait(sensor)} label={p.name.slice(0, 1)} />
       <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-medium leading-[18px]">{p.name} <span className="text-[11px] font-normal text-[#a1a1a1]">{p.age}세</span></div>
+        <div className="text-[13px] font-medium leading-[18px]">{p.name} {p.age ? <span className="text-[11px] font-normal text-[#a1a1a1]">{p.age}세</span> : null}</div>
         <div className="mt-1 inline-flex items-center gap-2"><span className={`inline-flex min-w-[20px] justify-center px-[5px] py-px text-[8px] ${style}`}>{label}</span></div>
       </div>
       <BatteryIcon level={battery(sensor)} className="h-[24px] w-[24px] rotate-90" />
@@ -562,16 +636,16 @@ function GuestRow({ sensor, onClick }) {
 }
 
 function AlertCard({ sensor }) {
-  const p = person(sensor.id);
+  const p = assignedGuest(sensor) || { name: displayName(sensor) };
   const [label, style] = priority(sensor);
   const headline = sensor.status === "danger" ? `심박수 ${sensor.bpm || 185}bpm, HRV 급락 감지` : sensor.finger === 0 ? "안전구역을 벗어남" : "지속적 고심박, 휴식 필요";
   return (
     <article className="min-h-[131px] w-full rounded-[9px] bg-[#f2f4f8] px-6 py-4">
       <span className={`inline-flex min-w-[20px] justify-center px-[5px] py-px text-[8px] ${style}`}>{label}</span>
       <div className="mt-[10px] text-center text-[18px] font-medium">{p.name}</div>
-      <div className="mt-1 text-center text-[11px] text-[#a1a1a1]">{beach(sensor.id)} / 위험스코어 {score(sensor)}</div>
+      <div className="mt-1 text-center text-[11px] text-[#a1a1a1]">{deviceBeach(sensor)} / 위험스코어 {score(sensor)}</div>
       <div className="mt-[10px] text-center text-[13px] leading-[1.45]">{headline}</div>
-      <div className="mt-[11px] flex items-center justify-center gap-5 text-[10px] text-[#8c8c8c]"><span>{when(sensor.lastUpdate)}</span><span>{beach(sensor.id)}</span></div>
+      <div className="mt-[11px] flex items-center justify-center gap-5 text-[10px] text-[#8c8c8c]"><span>{when(sensor.lastUpdate)}</span><span>{deviceBeach(sensor)}</span></div>
     </article>
   );
 }
@@ -580,7 +654,7 @@ function Compact({ sensor, onClick }) {
   return (
     <button type="button" className="grid min-h-[43px] grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-2 border border-[#cccfd4] bg-[#fcfcfd] px-[8px] py-[10px] text-left" onClick={onClick}>
       <span className="h-[7px] w-[7px] rounded-full" style={{ background: sensor.status === "danger" ? "#e31414" : sensor.status === "warning" ? "#ffcf0f" : sensor.status === "offline" ? "#9ca3af" : "#14a1e3" }} />
-      <div><div className="text-[10px] font-medium leading-[1]">{person(sensor.id).name}</div><div className="mt-[3px] text-[7px] leading-[1] text-[#a1a1a1]">{sensor.bpm || 0}bpm</div></div>
+      <div><div className="text-[10px] font-medium leading-[1]">{displayName(sensor)}</div><div className="mt-[3px] text-[7px] leading-[1] text-[#a1a1a1]">{sensor.bpm || 0}bpm</div></div>
       <div className="text-right text-[10px] font-medium">{score(sensor)}<span className="ml-[1px] text-[7px] text-[#a1a1a1]">점</span></div>
     </button>
   );
@@ -614,17 +688,17 @@ function IncidentCard({ incident }) {
   );
 }
 
-function Device({ sensor }) {
+function Device({ sensor, guests, onAssign }) {
   const level = battery(sensor);
   const availability = deviceAvailability(sensor);
-  const assignee = sensor.connected ? person(sensor.id).name : "미할당";
+  const assignee = assignedGuest(sensor)?.name || "미할당";
   const statusClass = sensor.status === "danger" || sensor.status === "offline" ? "text-[#e31414]" : sensor.status === "warning" ? "text-[#054067]" : "text-[#054067]";
   return (
     <article className="rounded-[15px] bg-[#f2f4f8] px-[16px] pb-[8px] pt-[10px] shadow-soft">
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-[12.5px] font-medium leading-[15px]">Ocean Guard {sensor.id}</div>
-          <div className="mt-[4px] text-[12.5px] font-light leading-[15px] text-[#a1a1a1]">Aqua Tracker Pro</div>
+          <div className="mt-[4px] text-[12.5px] font-light leading-[15px] text-[#a1a1a1]">{sensor.receiverLabel || "송수신기 연결 대기"}</div>
         </div>
         <div className="flex items-end gap-[1.5px] pt-[1px]">
           <span className="h-[5px] w-[2px] rounded-full" style={{ background: availability.iconColor, opacity: 0.55 }} />
@@ -645,9 +719,18 @@ function Device({ sensor }) {
         <span className="text-[#919191]">배터리</span>
         <span className={statusClass}>{statusText(sensor.status)}</span>
       </div>
-      <div className="mt-[9px] flex h-[21px] items-center gap-2 rounded-[10px] bg-[rgba(255,255,255,0.52)] px-[11px] text-[8.7px] text-[#21272a]">
-        <span className={sensor.connected ? "text-[#29bf5b]" : "text-[#a1a1a1]"}>{sensor.connected ? "◉" : "◎"}</span>
-        <span className={sensor.connected ? "" : "text-[#a1a1a1]"}>{assignee}</span>
+      <div className="mt-[9px] rounded-[10px] bg-[rgba(255,255,255,0.52)] px-[11px] py-[8px] text-[8.7px] text-[#21272a]">
+        <div className="flex items-center gap-2">
+          <span className={sensor.connected ? "text-[#29bf5b]" : "text-[#a1a1a1]"}>{sensor.connected ? "◉" : "◎"}</span>
+          <span className={sensor.connected ? "" : "text-[#a1a1a1]"}>{assignee}</span>
+        </div>
+        <label className="mt-[7px] flex items-center gap-2 text-[8.7px] text-[#6b7280]">
+          <span className="shrink-0">게스트</span>
+          <select className="h-[22px] w-full rounded-[7px] border border-[#d6dce5] bg-white px-2 text-[9px] text-[#21272a] outline-none" value={sensor.assignedGuestId || ""} onChange={(event) => onAssign(sensor.id, event.target.value ? Number(event.target.value) : null)}>
+            <option value="">미할당</option>
+            {guests.map((guest) => <option key={guest.id} value={guest.id}>{guest.name}</option>)}
+          </select>
+        </label>
       </div>
     </article>
   );

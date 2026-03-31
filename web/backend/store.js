@@ -55,6 +55,14 @@ class Store {
           last_lon DOUBLE PRECISION,
           battery INTEGER
         );
+
+        ALTER TABLE devices ADD COLUMN IF NOT EXISTS assigned_guest_id INTEGER;
+        ALTER TABLE devices ADD COLUMN IF NOT EXISTS receiver_label TEXT;
+        ALTER TABLE devices ADD COLUMN IF NOT EXISTS connected BOOLEAN DEFAULT false;
+        ALTER TABLE devices ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'available';
+        ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_bpm INTEGER;
+        ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_emg INTEGER;
+        ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_finger INTEGER;
       `);
 
       return;
@@ -99,24 +107,78 @@ class Store {
         battery INTEGER
       );
     `);
+
+    const alterStatements = [
+      "ALTER TABLE devices ADD COLUMN assigned_guest_id INTEGER",
+      "ALTER TABLE devices ADD COLUMN receiver_label TEXT",
+      "ALTER TABLE devices ADD COLUMN connected INTEGER DEFAULT 0",
+      "ALTER TABLE devices ADD COLUMN status TEXT DEFAULT 'available'",
+      "ALTER TABLE devices ADD COLUMN last_bpm INTEGER",
+      "ALTER TABLE devices ADD COLUMN last_emg INTEGER",
+      "ALTER TABLE devices ADD COLUMN last_finger INTEGER"
+    ];
+
+    for (const statement of alterStatements) {
+      try {
+        this.sqlite.exec(statement);
+      } catch (error) {
+        if (!String(error.message).includes("duplicate column")) throw error;
+      }
+    }
   }
 
   async upsertDevice(device) {
-    const { id, name, lat, lon, battery } = device;
+    const {
+      id,
+      name,
+      lat,
+      lon,
+      battery,
+      assignedGuestId,
+      receiverLabel,
+      connected,
+      status,
+      bpm,
+      emg,
+      finger
+    } = device;
 
     if (this.mode === "postgres") {
       await this.pg.query(
         `
-          INSERT INTO devices (id, name, registered_at, last_seen, last_lat, last_lon, battery)
-          VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $3, $4, $5)
+          INSERT INTO devices (
+            id, name, registered_at, last_seen, last_lat, last_lon, battery,
+            assigned_guest_id, receiver_label, connected, status, last_bpm, last_emg, last_finger
+          )
+          VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
           ON CONFLICT (id) DO UPDATE SET
             name = EXCLUDED.name,
             last_seen = CURRENT_TIMESTAMP,
             last_lat = EXCLUDED.last_lat,
             last_lon = EXCLUDED.last_lon,
-            battery = EXCLUDED.battery
+            battery = EXCLUDED.battery,
+            assigned_guest_id = COALESCE(EXCLUDED.assigned_guest_id, devices.assigned_guest_id),
+            receiver_label = COALESCE(EXCLUDED.receiver_label, devices.receiver_label),
+            connected = COALESCE(EXCLUDED.connected, devices.connected),
+            status = COALESCE(EXCLUDED.status, devices.status),
+            last_bpm = COALESCE(EXCLUDED.last_bpm, devices.last_bpm),
+            last_emg = COALESCE(EXCLUDED.last_emg, devices.last_emg),
+            last_finger = COALESCE(EXCLUDED.last_finger, devices.last_finger)
         `,
-        [id, name, lat, lon, battery ?? null]
+        [
+          id,
+          name,
+          lat,
+          lon,
+          battery ?? null,
+          assignedGuestId ?? null,
+          receiverLabel ?? null,
+          connected ?? null,
+          status ?? null,
+          bpm ?? null,
+          emg ?? null,
+          finger ?? null
+        ]
       );
       return;
     }
@@ -124,17 +186,64 @@ class Store {
     this.sqlite
       .prepare(
         `
-          INSERT INTO devices (id, name, registered_at, last_seen, last_lat, last_lon, battery)
-          VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?)
+          INSERT INTO devices (
+            id, name, registered_at, last_seen, last_lat, last_lon, battery,
+            assigned_guest_id, receiver_label, connected, status, last_bpm, last_emg, last_finger
+          )
+          VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             last_seen = CURRENT_TIMESTAMP,
             last_lat = excluded.last_lat,
             last_lon = excluded.last_lon,
-            battery = excluded.battery
+            battery = excluded.battery,
+            assigned_guest_id = COALESCE(excluded.assigned_guest_id, devices.assigned_guest_id),
+            receiver_label = COALESCE(excluded.receiver_label, devices.receiver_label),
+            connected = COALESCE(excluded.connected, devices.connected),
+            status = COALESCE(excluded.status, devices.status),
+            last_bpm = COALESCE(excluded.last_bpm, devices.last_bpm),
+            last_emg = COALESCE(excluded.last_emg, devices.last_emg),
+            last_finger = COALESCE(excluded.last_finger, devices.last_finger)
         `
       )
-      .run(id, name, lat, lon, battery ?? null);
+      .run(
+        id,
+        name,
+        lat,
+        lon,
+        battery ?? null,
+        assignedGuestId ?? null,
+        receiverLabel ?? null,
+        connected === undefined ? null : connected ? 1 : 0,
+        status ?? null,
+        bpm ?? null,
+        emg ?? null,
+        finger ?? null
+      );
+  }
+
+  async updateDeviceAssignment(id, assignedGuestId) {
+    if (this.mode === "postgres") {
+      await this.pg.query(
+        `
+          UPDATE devices
+          SET assigned_guest_id = $1
+          WHERE id = $2
+        `,
+        [assignedGuestId ?? null, id]
+      );
+      return;
+    }
+
+    this.sqlite
+      .prepare(
+        `
+          UPDATE devices
+          SET assigned_guest_id = ?
+          WHERE id = ?
+        `
+      )
+      .run(assignedGuestId ?? null, id);
   }
 
   async insertSensorLog(entry) {
