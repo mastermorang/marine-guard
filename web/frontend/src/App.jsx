@@ -204,9 +204,8 @@ export default function App() {
   return (
     <div className="min-h-screen bg-transparent text-[#21272a]">
       <aside className={`fixed inset-y-0 left-0 z-30 flex w-[256px] flex-col bg-white px-4 pb-8 pt-6 transition-transform duration-200 xl:translate-x-0 ${mobileNav ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="flex flex-col items-center gap-2 pb-8 pt-2">
-          <Logo className="h-[58px] w-[58px]" />
-          <div className="font-serif text-[23px] tracking-[-0.03em] text-[#0d6381]">MARINE GUARD</div>
+        <div className="flex justify-center pb-8 pt-2">
+          <BrandLogo className="w-[182px]" />
         </div>
         <nav className="flex flex-col">
           {nav.map(([key, title, subtitle]) => (
@@ -659,29 +658,52 @@ function Panel({ title, children }) {
 }
 
 function Gauge({ value }) {
+  const display = value || "--";
+  const arc = Math.max(0, Math.min(100, Number(value) || 0));
+  const circumference = 170;
+  const offset = circumference - (arc / 100) * circumference;
   return (
-    <div className="flex flex-col items-center justify-center">
-      <div className="relative h-[105px] w-[128px] overflow-hidden" style={{ background: "linear-gradient(180deg, rgba(255,255,255,0) 45%, rgba(255,255,255,1) 46%), conic-gradient(from 180deg at 50% 100%, #d8d8d8 0deg, #d8d8d8 180deg)" }}>
-        <div className="absolute bottom-0 left-1/2 h-[128px] w-[128px] -translate-x-1/2 rounded-full border-[14px] border-b-transparent border-t-transparent" style={{ borderLeftColor: value > 33 ? "#d0d0d0" : "#ffcf0f", borderRightColor: value > 66 ? "#e31414" : "#d0d0d0", transform: `translateX(-50%) rotate(${Math.max(0, Math.min(180, (value / 100) * 180)) - 90}deg)` }} />
-      </div>
-      <div className="-mt-3 text-[18px] font-medium">{value || "--"}점</div>
+    <div className="flex justify-center py-2">
+      <svg viewBox="0 0 128 110" className="h-[112px] w-[128px]" aria-hidden="true">
+        <path d="M24 87 A40 40 0 1 1 104 87" fill="none" stroke="#dfe1e6" strokeWidth="14" strokeLinecap="round" />
+        <path
+          d="M24 87 A40 40 0 1 1 104 87"
+          fill="none"
+          stroke={arc > 66 ? "#e31414" : arc > 33 ? "#ffcf0f" : "#14a1e3"}
+          strokeWidth="14"
+          strokeLinecap="round"
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={offset}
+        />
+        <text x="64" y="80" textAnchor="middle" fontSize="20" fontWeight="600" fill="#525252">{display}</text>
+        <text x="64" y="96" textAnchor="middle" fontSize="11" fontWeight="600" fill="#525252">점</text>
+      </svg>
     </div>
   );
 }
 
 function Heart({ bpm }) {
-  return <div className="flex flex-col items-center justify-center gap-2 py-3"><div className="relative h-[88px] w-[90px]"><div className="absolute inset-0 flex items-center justify-center text-[72px] leading-none text-[#f3f5f9]">♥</div><div className="absolute inset-0 flex items-center justify-center text-[18px] font-medium text-[#666]">{bpm}</div></div></div>;
+  return (
+    <div className="flex justify-center py-2">
+      <svg viewBox="0 0 132 118" className="h-[118px] w-[132px]" aria-hidden="true">
+        <path d="M66 107C53 97 28 78 17 60C8 45 11 25 28 18C43 12 56 21 66 34C76 21 89 12 104 18C121 25 124 45 115 60C104 78 79 97 66 107Z" fill="#f0f3f8" />
+        <text x="66" y="66" textAnchor="middle" fontSize="18" fontWeight="600" fill="#525252">{bpm}</text>
+      </svg>
+    </div>
+  );
 }
 
 function BatteryWave({ level }) {
+  const x = Math.max(18, Math.min(315, (Number(level) || 0) * 3.15));
   return (
-    <div className="overflow-hidden rounded-[9px] bg-[#f5f7fb] p-3">
-      <svg viewBox="0 0 333 49" className="h-[49px] w-full">
-        <path d="M0 28 C32 18 48 18 83 28 V49 H0 Z" fill="#e8edf5" />
-        <path d="M84 18 C118 8 132 8 166 18 V49 H84 Z" fill="#e6ebf3" />
-        <path d="M167 10 C198 0 218 0 249 10 V49 H167 Z" fill="#e4e9f1" />
-        <path d="M250 0 C281 8 302 8 333 0 V49 H250 Z" fill="#dfe5ee" />
-        <line x1={`${Math.max(30, (level / 100) * 333)}`} y1="0" x2={`${Math.max(30, (level / 100) * 333)}`} y2="49" stroke="#ffffff" strokeWidth="1.5" opacity="0.85" />
+    <div className="overflow-hidden rounded-[9px] bg-[#f5f7fb] px-3 py-[11px]">
+      <svg viewBox="0 0 333 49" className="h-[49px] w-full" aria-hidden="true">
+        <path d="M0 38C24 38 36 30 52 30C69 30 80 36 93 36V49H0V38Z" fill="#edf1f7" />
+        <path d="M84 29C108 29 120 20 139 20C157 20 172 28 186 28V49H84V29Z" fill="#e8edf5" />
+        <path d="M167 18C193 18 206 8 228 8C247 8 263 19 279 19V49H167V18Z" fill="#e4e9f1" />
+        <path d="M250 10C273 10 289 3 309 3C320 3 327 4 333 4V49H250V10Z" fill="#e1e7f0" />
+        <path d={`M0 38C24 38 36 30 52 30C69 30 80 36 93 36V49H0V38Z M84 29C108 29 120 20 139 20C157 20 172 28 186 28V49H84V29Z M167 18C193 18 206 8 228 8C247 8 263 19 279 19V49H167V18Z M250 10C273 10 289 3 309 3C320 3 327 4 333 4V49H250V10Z`} fill="none" stroke="#f7f9fc" strokeWidth="1.2" />
+        <rect x="0" y="0" width={x} height="49" fill="rgba(20,161,227,0.08)" />
       </svg>
     </div>
   );
@@ -753,12 +775,15 @@ function MoreDots({ className = "" }) {
   );
 }
 
-function Logo({ className = "" }) {
+function BrandLogo({ className = "" }) {
   return (
-    <svg className={className} viewBox="0 0 58 58" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M29 4L47 10V28C47 40.2 38.2 50.4 26.2 53.1L23.8 53.6L23.6 50.3C23 39.3 14.9 30.4 4 28.6V10L29 4Z" fill="#11658A" />
-      <path d="M45.3 15C41.8 14.7 37.9 15.8 34.2 18.2C28.4 22 22.2 21.5 16.2 16.7L14 15L12.5 17.5C11.8 18.7 11.2 20 10.8 21.4C16.4 25.4 22.7 26.4 28.6 24.4C33.2 22.8 36.4 19.5 39.9 18.5C41.8 17.9 43.7 17.9 45.7 18.6L45.3 15Z" fill="#66D8E8" />
-      <path d="M16.3 27.9C19.8 31.4 24 33.6 28.5 34.2C35.6 35.2 42.8 32.4 47 27.2V22.5C43.8 28.2 37.6 31.7 31 31.4C25.3 31.2 20.1 28.3 16.3 23.4V27.9Z" fill="#E8FAFF" />
+    <svg className={className} viewBox="0 0 183 94" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <g transform="translate(66 2) scale(0.88)">
+        <path d="M29 4L47 10V28C47 40.2 38.2 50.4 26.2 53.1L23.8 53.6L23.6 50.3C23 39.3 14.9 30.4 4 28.6V10L29 4Z" fill="#11658A" />
+        <path d="M45.3 15C41.8 14.7 37.9 15.8 34.2 18.2C28.4 22 22.2 21.5 16.2 16.7L14 15L12.5 17.5C11.8 18.7 11.2 20 10.8 21.4C16.4 25.4 22.7 26.4 28.6 24.4C33.2 22.8 36.4 19.5 39.9 18.5C41.8 17.9 43.7 17.9 45.7 18.6L45.3 15Z" fill="#54C7D7" />
+        <path d="M16.3 27.9C19.8 31.4 24 33.6 28.5 34.2C35.6 35.2 42.8 32.4 47 27.2V22.5C43.8 28.2 37.6 31.7 31 31.4C25.3 31.2 20.1 28.3 16.3 23.4V27.9Z" fill="#E8FAFF" />
+      </g>
+      <text x="91.5" y="82" textAnchor="middle" fill="#0d6381" fontFamily="Georgia, 'Times New Roman', serif" fontSize="24" letterSpacing="0.04em">MARINE GUARD</text>
     </svg>
   );
 }

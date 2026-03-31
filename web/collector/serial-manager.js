@@ -160,7 +160,29 @@ class SerialManager extends EventEmitter {
 
   parseData(line) {
     try {
-      if (!line || !line.includes("$M")) return null;
+      if (!line) return null;
+
+      if (line.startsWith("{")) {
+        const parsed = JSON.parse(line);
+        const id = Number(parsed.id);
+        if (!Number.isInteger(id) || id < 1 || id > 1000) return null;
+
+        return {
+          id,
+          name: parsed.name ? String(parsed.name) : undefined,
+          lat: Number(parsed.lat) || 0,
+          lon: Number(parsed.lon) || 0,
+          emg: Number(parsed.emg) || 0,
+          finger: Number(parsed.finger) || 0,
+          bpm: Number(parsed.bpm) || 0,
+          battery:
+            parsed.battery === undefined || parsed.battery === null
+              ? undefined
+              : Number(parsed.battery) || 0
+        };
+      }
+
+      if (!line.includes("$M")) return null;
 
       const parts = line.split(",");
       if (parts.length < 6) return null;
@@ -173,11 +195,16 @@ class SerialManager extends EventEmitter {
 
       return {
         id,
+        name: parts[7] ? String(parts[7]).trim() : undefined,
         lat: Number(latPart.slice(2)) || 0,
         lon: Number(parts[2]) || 0,
         emg: Number(parts[3]) || 0,
         finger: Number(parts[4]) || 0,
-        bpm: Number(parts[5]) || 0
+        bpm: Number(parts[5]) || 0,
+        battery:
+          parts[6] === undefined || parts[6] === ""
+            ? undefined
+            : Number(parts[6]) || 0
       };
     } catch (error) {
       return null;
