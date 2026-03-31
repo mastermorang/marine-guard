@@ -287,7 +287,7 @@ export default function App() {
 
         <div className="w-full px-3 pb-6 pt-3 md:px-5 md:pb-8 md:pt-5 xl:px-0 xl:pr-6 xl:pt-6">
           <div className="min-h-[785px] w-full rounded-[20px] bg-[#f2f4f8] px-4 py-[17px] shadow-panel xl:px-[16px]">
-            <TopBar alerts={alerts} />
+            <TopBar alerts={alerts} serial={serial} />
             {page === "dashboard" ? <Dashboard ordered={activeGuests} alerts={alerts} region={region} onRegion={setRegion} onSelect={(id) => { setSelectedId(String(id)); setPage("livemap"); }} /> : null}
             {page === "livemap" ? <LiveMap selected={selected} ordered={trackedDevices} region={region} onRegion={setRegion} onSelect={(id) => setSelectedId(String(id))} /> : null}
             {page === "incidents" ? <Incidents incidents={shownIncidents} filter={filter} query={query} onFilter={setFilter} onQuery={setQuery} /> : null}
@@ -301,9 +301,16 @@ export default function App() {
   );
 }
 
-function TopBar({ alerts }) {
+function TopBar({ alerts, serial }) {
   const lead = alerts[0];
   const p = person(6);
+  const tone = !serial.connected ? "text-[#da1e28]" : lead ? "text-[#ffb100]" : "text-[#18b26b]";
+  const title = !serial.connected ? "수집기 연결 끊김" : lead ? "이상 감지" : "정상";
+  const message = !serial.connected
+    ? serial.message || "수집기 데이터가 들어오지 않고 있습니다"
+    : lead
+      ? `${displayName(lead)} 디바이스에서 위험 상태가 감지되었습니다`
+      : `${serial.port || "현장 수집기"}가 정상적으로 연결되었습니다`;
   return (
     <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex min-h-[32px] items-center gap-3 rounded-[9px] bg-white px-3 py-2">
@@ -312,10 +319,10 @@ function TopBar({ alerts }) {
             <path d="M15 17H5L6.4 15.6C6.8 15.2 7 14.7 7 14.2V10.2C7 7.3 9 5 12 5C15 5 17 7.3 17 10.2V14.2C17 14.7 17.2 15.2 17.6 15.6L19 17H15Z" />
             <path d="M10.5 19C10.9 19.6 11.5 20 12.2 20C12.9 20 13.5 19.6 13.9 19" />
           </svg>
-          <span className="absolute left-[4px] top-[3px] h-[6px] w-[6px] rounded-full bg-[#da1e28]" />
+          <span className={`absolute left-[4px] top-[3px] h-[6px] w-[6px] rounded-full ${!serial.connected ? "bg-[#da1e28]" : lead ? "bg-[#ffb100]" : "bg-[#18b26b]"}`} />
         </span>
-        <div className="text-[11px] font-medium">{lead ? "이탈" : "정상"}</div>
-        <div className="text-[10px] text-[#a1a1a1]">{lead ? `${person(lead.id).name} 님이 안전구역을 일시적으로 벗어났습니다` : "현재 시스템이 정상적으로 운영 중입니다"}</div>
+        <div className={`text-[11px] font-medium ${tone}`}>{title}</div>
+        <div className="text-[10px] text-[#a1a1a1]">{message}</div>
       </div>
       <div className="ml-auto flex items-center gap-2">
         <Avatar src={topProfileImage} label={p.name.slice(0, 1)} className="h-[31.5px] w-[31.5px] text-[11px]" />

@@ -109,6 +109,8 @@ class Store {
     `);
 
     const alterStatements = [
+      "ALTER TABLE sensor_logs ADD COLUMN battery INTEGER",
+      "ALTER TABLE devices ADD COLUMN battery INTEGER",
       "ALTER TABLE devices ADD COLUMN assigned_guest_id INTEGER",
       "ALTER TABLE devices ADD COLUMN receiver_label TEXT",
       "ALTER TABLE devices ADD COLUMN connected INTEGER DEFAULT 0",
