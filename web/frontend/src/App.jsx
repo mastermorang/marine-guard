@@ -7,6 +7,17 @@ const apiBase = (runtimeConfig.apiBase || "").replace(/\/$/, "");
 const socketUrl = runtimeConfig.socketUrl || apiBase || window.location.origin;
 const socketPath = runtimeConfig.socketPath || "/socket.io";
 const heroImage = "https://www.figma.com/api/mcp/asset/9f6230eb-0993-4d4b-89cd-12762e677c3f";
+const topProfileImage = "https://www.figma.com/api/mcp/asset/3044289f-ba5d-4c6e-9727-771628d9c6e0";
+const guestPortraits = {
+  1: "https://www.figma.com/api/mcp/asset/d1bebb47-99e4-413e-8161-242996ec5f12",
+  2: "https://www.figma.com/api/mcp/asset/d9647765-d4aa-4795-b559-034e5b8d84ae",
+  3: "https://www.figma.com/api/mcp/asset/5c861671-dcd2-42c1-a455-40af77e0f004",
+  4: "https://www.figma.com/api/mcp/asset/cf1500eb-b732-464b-9b02-2ce3af753d2f",
+  5: "https://www.figma.com/api/mcp/asset/f6e731e3-d6f2-4b38-a64b-971aae874696",
+  6: "https://www.figma.com/api/mcp/asset/91ee9da0-64a0-413a-b764-c665e531275f",
+  7: "https://www.figma.com/api/mcp/asset/420df85e-a468-43e8-809f-605af6fe24cc",
+  8: "https://www.figma.com/api/mcp/asset/6114f082-5616-4d9e-a343-229e2759e29a"
+};
 
 const people = [
   ["김철수", 32],
@@ -23,6 +34,8 @@ const people = [
   ["오지현", 26]
 ];
 const beaches = ["송정해수욕장", "광안리해수욕장", "다대포해수욕장", "경포해수욕장", "중문해수욕장", "협재해수욕장"];
+const regions = ["부산", "포항", "강원도", "제주도"];
+const coaches = ["박코치", "김코치", "이코치", "정코치"];
 const nav = [
   ["dashboard", "대시보드", "실시간 현황"],
   ["livemap", "라이브 맵", "실시간 위치"],
@@ -41,6 +54,13 @@ function person(id) {
 }
 function beach(id) {
   return beaches[(Number(id) - 1 + beaches.length) % beaches.length];
+}
+function guestPortrait(id) {
+  const index = ((Number(id) - 1) % Object.keys(guestPortraits).length) + 1;
+  return guestPortraits[index] || topProfileImage;
+}
+function coach(id) {
+  return coaches[(Number(id) - 1 + coaches.length) % coaches.length];
 }
 function battery(sensor) {
   if (sensor?.battery !== null && sensor?.battery !== undefined && !Number.isNaN(Number(sensor.battery))) {
@@ -88,6 +108,15 @@ function marker(sensor) {
     iconAnchor: [7, 7],
     html: `<div style="width:14px;height:14px;border-radius:999px;border:2px solid #fff;background:${tone};box-shadow:0 6px 16px rgba(15,37,60,.24)"></div>`
   });
+}
+function deviceAvailability(sensor) {
+  if (sensor.status === "danger" || sensor.status === "offline") {
+    return { label: "정비중", pillClass: "bg-[rgba(227,20,20,0.63)] text-white", iconColor: "#e31414" };
+  }
+  if (sensor.connected) {
+    return { label: "대여중", pillClass: "bg-[rgba(5,64,103,0.49)] text-white", iconColor: sensor.status === "warning" ? "#ffcf0f" : "#29bf5b" };
+  }
+  return { label: "사용가능", pillClass: "bg-[rgba(28,121,28,0.46)] text-white", iconColor: "#29bf5b" };
 }
 
 export default function App() {
@@ -190,10 +219,10 @@ export default function App() {
           <span className={`h-2.5 w-2.5 rounded-full ${serial.connected ? "bg-[#18b26b]" : "bg-[#9ca3af]"}`} />
         </header>
 
-        <div className="mx-auto max-w-[1033px] px-3 pb-6 pt-3 md:px-5 md:pb-8 md:pt-5 xl:px-6">
-          <div className="rounded-[20px] bg-[#f2f4f8] px-4 py-4 shadow-panel">
+        <div className="mx-auto max-w-[985px] px-3 pb-6 pt-3 md:px-5 md:pb-8 md:pt-5 xl:px-0">
+          <div className="min-h-[785px] rounded-[20px] bg-[#f2f4f8] px-4 py-[17px] shadow-panel">
             <TopBar alerts={alerts} />
-            {page === "dashboard" ? <Dashboard ordered={ordered} alerts={alerts} onSelect={(id) => { setSelectedId(String(id)); setPage("livemap"); }} /> : null}
+            {page === "dashboard" ? <Dashboard ordered={ordered} alerts={alerts} region={region} onRegion={setRegion} onSelect={(id) => { setSelectedId(String(id)); setPage("livemap"); }} /> : null}
             {page === "livemap" ? <LiveMap selected={selected} ordered={ordered} region={region} onRegion={setRegion} onSelect={(id) => setSelectedId(String(id))} /> : null}
             {page === "incidents" ? <Incidents incidents={shownIncidents} filter={filter} query={query} onFilter={setFilter} onQuery={setQuery} /> : null}
             {page === "devices" ? <Devices ordered={ordered} /> : null}
@@ -208,21 +237,24 @@ export default function App() {
 
 function TopBar({ alerts }) {
   const lead = alerts[0];
-  const p = person(1);
+  const p = person(6);
   return (
     <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex min-h-[32px] items-center gap-3 rounded-[9px] bg-white px-3 py-2">
         <span className="relative flex h-[22px] w-[22px] items-center justify-center rounded-full bg-white">
-          <span className="absolute left-[5px] top-[4px] h-[6px] w-[6px] rounded-full bg-[#e31414]" />
-          <span className="h-[8px] w-[8px] rounded-full bg-[#cbd5e1]" />
+          <svg className="h-[18px] w-[18px] text-[#c7cbd1]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M15 17H5L6.4 15.6C6.8 15.2 7 14.7 7 14.2V10.2C7 7.3 9 5 12 5C15 5 17 7.3 17 10.2V14.2C17 14.7 17.2 15.2 17.6 15.6L19 17H15Z" />
+            <path d="M10.5 19C10.9 19.6 11.5 20 12.2 20C12.9 20 13.5 19.6 13.9 19" />
+          </svg>
+          <span className="absolute left-[4px] top-[3px] h-[6px] w-[6px] rounded-full bg-[#da1e28]" />
         </span>
         <div className="text-[11px] font-medium">{lead ? "이탈" : "정상"}</div>
         <div className="text-[10px] text-[#a1a1a1]">{lead ? `${person(lead.id).name} 님이 안전구역을 일시적으로 벗어났습니다` : "현재 시스템이 정상적으로 운영 중입니다"}</div>
       </div>
       <div className="ml-auto flex items-center gap-2">
-        <Avatar label={p.name.slice(0, 1)} tone={1} className="h-[31.5px] w-[31.5px] text-[11px]" />
+        <Avatar src={topProfileImage} label={p.name.slice(0, 1)} className="h-[31.5px] w-[31.5px] text-[11px]" />
         <div className="text-[11px] leading-[12px]">
-          <div className="font-medium">{p.name}</div>
+          <div className="font-medium">홍길동</div>
           <div className="mt-0.5 text-[8px] text-[#a1a1a1]">hong@gmail.com</div>
         </div>
         <svg className="h-5 w-5 text-[#113f67]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M8 10L12 14L16 10" /></svg>
@@ -231,29 +263,29 @@ function TopBar({ alerts }) {
   );
 }
 
-function Dashboard({ ordered, alerts, onSelect }) {
+function Dashboard({ ordered, alerts, region, onRegion, onSelect }) {
   return (
     <div className="flex flex-col gap-4">
-      <section className="overflow-hidden rounded-[12px] px-7 py-6 text-white" style={{ backgroundImage: `linear-gradient(rgba(17,63,103,.24), rgba(17,63,103,.24)), url(${heroImage})`, backgroundPosition: "center", backgroundSize: "cover" }}>
+      <section className="overflow-hidden rounded-[12px] px-[31px] py-[20px] text-white" style={{ backgroundImage: `linear-gradient(rgba(17,63,103,.24), rgba(17,63,103,.24)), url(${heroImage})`, backgroundPosition: "center", backgroundSize: "cover" }}>
         <div className="text-[17px] font-medium leading-[1.2]">해양안전 실시간 모니터링</div>
         <div className="mt-2 text-[13px] text-white/90">현재 {ordered.length || 24}명의 게스트가 안전하게 해양레저를 즐기고 있습니다</div>
       </section>
-      <div className="grid gap-4 xl:grid-cols-[291px_minmax(0,1fr)]">
-        <div className="rounded-[12px] bg-white p-[13px] shadow-soft">
-          <div className="mb-4 text-[15px] font-medium">활성 게스트</div>
-          <div className="flex max-h-[240px] flex-col gap-[6px] overflow-auto pr-1">{ordered.slice(0, 6).map((sensor) => <GuestRow key={sensor.id} sensor={sensor} onClick={() => onSelect(sensor.id)} />)}</div>
+      <div className="grid gap-4 xl:grid-cols-[361px_576px]">
+        <div className="rounded-[12px] bg-white px-[13px] pb-[14px] pt-[15px] shadow-soft">
+          <div className="mb-[15px] text-[15px] font-medium">활성 게스트</div>
+          <div className="flex max-h-[269px] flex-col gap-[6px] overflow-auto pr-1">{ordered.slice(0, 6).map((sensor) => <GuestRow key={sensor.id} sensor={sensor} onClick={() => onSelect(sensor.id)} />)}</div>
         </div>
-        <div className="rounded-[12px] bg-white p-[13px] shadow-soft">
-          <div className="mb-3 flex items-center justify-between">
+        <div className="rounded-[12px] bg-white px-[13px] pb-[15px] pt-[10px] shadow-soft">
+          <div className="mb-[13px] flex items-center justify-between">
             <div className="text-[15px] font-medium">라이브 맵</div>
-            <div className="rounded-[18px] border border-[#e4e9f1] bg-white px-4 py-2 text-[10px]">위치</div>
+            <RegionSelect value={region} onChange={onRegion} size="sm" />
           </div>
           <div className="h-[266px] overflow-hidden rounded-[9px]"><MapBox sensors={ordered} zoom={12} /></div>
         </div>
       </div>
       <div className="rounded-[12px] bg-white p-[13px] shadow-soft">
         <div className="mb-4 text-[15px] font-medium">알림</div>
-        <div className="flex gap-3 overflow-x-auto pb-1">{(alerts.length ? alerts : ordered.slice(0, 3)).map((sensor) => <AlertCard key={sensor.id} sensor={sensor} />)}</div>
+        <div className="flex gap-3 overflow-x-auto pb-1">{(alerts.length ? alerts : ordered.slice(0, 4)).map((sensor) => <AlertCard key={sensor.id} sensor={sensor} />)}</div>
       </div>
     </div>
   );
@@ -261,42 +293,37 @@ function Dashboard({ ordered, alerts, onSelect }) {
 
 function LiveMap({ selected, ordered, region, onRegion, onSelect }) {
   return (
-    <div className="grid gap-4 xl:grid-cols-[576px_minmax(0,1fr)]">
-      <div className="rounded-[12px] bg-white p-[13px] shadow-soft">
+    <div className="grid gap-4 xl:grid-cols-[576px_361px]">
+      <div className="rounded-[12px] bg-white px-[13px] pb-[16px] pt-[12px] shadow-soft">
         <div className="mb-3 flex items-center justify-between">
           <div className="text-[15px] font-medium">라이브 맵</div>
-          <select className="rounded-[18px] border border-[#e4e9f1] bg-white px-4 py-2 text-[10px] outline-none" value={region} onChange={(event) => onRegion(event.target.value)}>
-            <option>부산</option>
-            <option>포항</option>
-            <option>강원도</option>
-            <option>제주도</option>
-          </select>
+          <RegionSelect value={region} onChange={onRegion} />
         </div>
         <div className="h-[638px] overflow-hidden rounded-[9px]"><MapBox sensors={ordered} zoom={13} focus={selected} /></div>
       </div>
-      <div className="flex flex-col gap-3">
-        <div className="rounded-[12px] bg-white p-[13px] shadow-soft">
+      <div className="flex flex-col gap-[13px]">
+        <div className="rounded-[12px] bg-white px-[13px] pb-[13px] pt-[15px] shadow-soft">
           <div className="text-[15px] font-medium">선택된 게스트</div>
           <div className="mt-4 rounded-[9px] bg-[#f8fafc] px-4 py-3">
             <div className="flex items-center gap-3">
-              <Avatar label={selected ? person(selected.id).name.slice(0, 1) : "-"} tone={selected?.id || 1} />
+              <Avatar src={selected ? guestPortrait(selected.id) : null} label={selected ? person(selected.id).name.slice(0, 1) : "-"} />
               <div className="text-[11px] leading-[12px]">
                 <div className="font-medium">{selected ? person(selected.id).name : "-"}</div>
                 <div className="mt-1 text-[#a1a1a1]">마지막 업데이트 : {selected ? when(selected.lastUpdate) : "-"}</div>
               </div>
-              <div className="ml-auto text-[#a1a1a1]">···</div>
+              <MoreDots className="ml-auto h-4 w-4 text-[#a1a1a1]" />
             </div>
           </div>
         </div>
-        <button type="button" className="rounded-[18px] bg-[#e2e2e2] py-2 text-[10px] text-[#8c8c8c]">요원 긴급 배정</button>
-        <div className="grid gap-3 md:grid-cols-2">
+        <button type="button" className="h-[28px] rounded-[18px] bg-[#e2e2e2] text-[10px] text-[#8c8c8c]">요원 긴급 배정</button>
+        <div className="grid gap-[13px] sm:grid-cols-2 xl:grid-cols-2">
           <Panel title="위험 스코어"><Gauge value={score(selected)} /></Panel>
           <Panel title="심박수"><Heart bpm={selected?.finger === 0 ? "---" : `${selected?.bpm || "---"}bpm`} /></Panel>
         </div>
         <Panel title="배터리"><BatteryWave level={battery(selected)} /></Panel>
-        <div className="rounded-[12px] bg-white p-[13px] shadow-soft">
+        <div className="rounded-[12px] bg-white px-[13px] pb-[13px] pt-[15px] shadow-soft">
           <div className="mb-3 text-[13px] font-medium">전체 게스트 목록</div>
-          <div className="grid gap-2 sm:grid-cols-2">{ordered.slice(0, 8).map((sensor) => <Compact key={sensor.id} sensor={sensor} onClick={() => onSelect(String(sensor.id))} />)}</div>
+          <div className="grid gap-2 sm:grid-cols-2">{ordered.slice(0, 10).map((sensor) => <Compact key={sensor.id} sensor={sensor} onClick={() => onSelect(String(sensor.id))} />)}</div>
         </div>
       </div>
     </div>
@@ -305,38 +332,45 @@ function LiveMap({ selected, ordered, region, onRegion, onSelect }) {
 
 function Incidents({ incidents, filter, query, onFilter, onQuery }) {
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="text-[28px] font-medium leading-none">사건 로그</div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Chip active={filter === "yesterday"} onClick={() => onFilter("yesterday")}>어제</Chip>
-          <Chip active={filter === "today"} onClick={() => onFilter("today")}>오늘</Chip>
-          <label className="flex h-[30px] items-center gap-2 rounded-[8px] border border-[#e4e9f1] bg-white px-3 text-[10px] text-[#8c8c8c]">
+    <div className="flex flex-col gap-[14px] xl:max-w-[576px]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="pt-[4px] text-[15px] font-medium leading-[16px]">사건 로그</div>
+        <div className="flex flex-wrap items-center gap-[10px] sm:justify-end">
+          <div className="flex gap-[6px]">
+            <button type="button" className={`h-[22px] rounded-[6px] border px-[14px] text-[10px] ${filter === "yesterday" ? "border-[#b0b0b0] bg-white text-[#616161]" : "border-[#dbdbdb] bg-white text-[#616161]"}`} onClick={() => onFilter("yesterday")}>어제</button>
+            <button type="button" className={`h-[22px] rounded-[6px] px-[14px] text-[10px] ${filter === "today" ? "bg-[#054067] text-white" : "border border-[#dbdbdb] bg-white text-[#616161]"}`} onClick={() => onFilter("today")}>오늘</button>
+          </div>
+          <label className="flex h-[22px] w-full items-center gap-2 rounded-[6px] border border-[#dbdbdb] bg-white px-3 text-[10px] text-[#a1a1a1] sm:w-[154px]">
             <Search />
             <input className="w-[160px] border-0 bg-transparent p-0 text-[10px] outline-none" placeholder="검색..." value={query} onChange={(event) => onQuery(event.target.value)} />
           </label>
         </div>
       </div>
-      <div className="flex flex-col gap-2">{incidents.map((incident) => <IncidentCard key={incident.incident_id} incident={incident} />)}</div>
+      <div className="flex max-h-[629px] flex-col gap-[7px] overflow-auto pr-1">{incidents.map((incident) => <IncidentCard key={incident.incident_id} incident={incident} />)}</div>
     </div>
   );
 }
 
 function Devices({ ordered }) {
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div className="flex flex-col gap-[18px]">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <div className="text-[28px] font-medium leading-none">웨어러블 기기 목록</div>
-          <div className="mt-2 text-[12px] text-[#a1a1a1]">등록된 디바이스의 상태와 정보를 관리합니다</div>
+          <div className="text-[13px] font-medium leading-[16px]">웨어러블 기기 목록</div>
+          <div className="mt-[3px] text-[10px] text-[#b5b5b6]">등록된 디바이스의 상태와 정보를 관리합니다</div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Chip active>전체</Chip><Chip>대여중</Chip><Chip>사용가능</Chip><Chip>정비</Chip>
-          <label className="flex h-[30px] items-center gap-2 rounded-[8px] border border-[#e4e9f1] bg-white px-3 text-[10px] text-[#8c8c8c]"><Search /><input className="w-[120px] border-0 bg-transparent p-0 text-[10px] outline-none" placeholder="검색..." /></label>
+        <div className="flex flex-wrap items-center gap-[9px] lg:justify-end">
+          <div className="flex h-[25px] items-center gap-[2px] rounded-[12px] bg-[#f2f4f8] px-[4px]">
+            <button type="button" className="h-[19px] rounded-[9.5px] bg-white px-[18px] text-[9px] text-[#21272a]">전체</button>
+            <button type="button" className="px-[14px] text-[9px] text-[#21272a]">대여중</button>
+            <button type="button" className="px-[10px] text-[9px] text-[#21272a]">사용가능</button>
+            <button type="button" className="px-[14px] text-[9px] text-[#21272a]">정비</button>
+          </div>
+          <label className="flex h-[22px] w-full items-center gap-2 rounded-[6px] border border-[#dbdbdb] bg-white px-3 text-[10px] text-[#a1a1a1] sm:w-[154px]"><Search /><input className="w-full border-0 bg-transparent p-0 text-[10px] outline-none" placeholder="검색..." /></label>
         </div>
       </div>
-      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-4">{ordered.slice(0, 12).map((sensor) => <Device key={sensor.id} sensor={sensor} />)}</div>
-      <div className="flex items-center justify-center gap-6 pt-2 text-[#113f67]"><span className="text-[20px]">‹</span><div className="flex gap-5"><span className="h-2.5 w-2.5 rounded-full bg-[#113f67]" /><span className="h-2.5 w-2.5 rounded-full border border-[#113f67]" /><span className="h-2.5 w-2.5 rounded-full border border-[#113f67]" /></div><span className="text-[20px]">›</span></div>
+      <div className="grid gap-[6px] md:grid-cols-2 xl:grid-cols-[repeat(4,1fr)]">{ordered.slice(0, 12).map((sensor) => <Device key={sensor.id} sensor={sensor} />)}</div>
+      <div className="flex items-center justify-center gap-7 pt-[2px] text-[#113f67]"><span className="text-[20px]">‹</span><div className="flex gap-7"><span className="h-[9px] w-[9px] rounded-full border border-[#113f67]" /><span className="h-[9px] w-[9px] rounded-full bg-[#113f67]" /><span className="h-[9px] w-[9px] rounded-full border border-[#113f67]" /></div><span className="text-[20px]">›</span></div>
     </div>
   );
 }
@@ -424,13 +458,13 @@ function GuestRow({ sensor, onClick }) {
   const p = person(sensor.id);
   const [label, style] = priority(sensor);
   return (
-    <button type="button" className="flex items-center gap-3 rounded-[9px] bg-[#f2f4f8] px-4 py-[5.5px] text-left" onClick={onClick}>
-      <Avatar label={p.name.slice(0, 1)} tone={sensor.id} />
+    <button type="button" className="flex items-center gap-[13px] rounded-[9px] bg-[#f2f4f8] px-[15.5px] py-[5.5px] text-left" onClick={onClick}>
+      <Avatar src={guestPortrait(sensor.id)} label={p.name.slice(0, 1)} />
       <div className="min-w-0 flex-1">
         <div className="text-[13px] font-medium leading-[18px]">{p.name} <span className="text-[11px] font-normal text-[#a1a1a1]">{p.age}세</span></div>
         <div className="mt-1 inline-flex items-center gap-2"><span className={`inline-flex min-w-[20px] justify-center px-[5px] py-px text-[8px] ${style}`}>{label}</span></div>
       </div>
-      <div className="relative h-[24px] w-[24px] rotate-90"><div className="absolute inset-x-[8px] bottom-[4px] top-[7px] rounded-[1px] border border-[#054067]" /><div className="absolute left-[9px] right-[9px] top-[10px] h-[8px] rounded-[0.8px] bg-[#2dabb3]" style={{ opacity: Math.max(0.25, battery(sensor) / 100) }} /><div className="absolute left-[9px] right-[9px] top-[4px] h-[3px] rounded-t-[1px] bg-[#054067]" /></div>
+      <BatteryIcon level={battery(sensor)} className="h-[24px] w-[24px] rotate-90" />
     </button>
   );
 }
@@ -440,22 +474,22 @@ function AlertCard({ sensor }) {
   const [label, style] = priority(sensor);
   const headline = sensor.status === "danger" ? `심박수 ${sensor.bpm || 185}bpm, HRV 급락 감지` : sensor.finger === 0 ? "안전구역을 벗어남" : "지속적 고심박, 휴식 필요";
   return (
-    <article className="min-w-[230px] rounded-[9px] bg-[#f2f4f8] px-6 py-4">
+    <article className="h-[131px] w-[221px] flex-none rounded-[9px] bg-[#f2f4f8] px-6 py-4">
       <span className={`inline-flex min-w-[20px] justify-center px-[5px] py-px text-[8px] ${style}`}>{label}</span>
-      <div className="mt-3 text-center text-[18px] font-medium">{p.name}</div>
+      <div className="mt-[10px] text-center text-[18px] font-medium">{p.name}</div>
       <div className="mt-1 text-center text-[11px] text-[#a1a1a1]">{beach(sensor.id)} / 위험스코어 {score(sensor)}</div>
-      <div className="mt-4 text-center text-[13px] leading-[1.45]">{headline}</div>
-      <div className="mt-5 flex items-center justify-center gap-5 text-[10px] text-[#8c8c8c]"><span>{when(sensor.lastUpdate)}</span><span>송정해수욕장</span></div>
+      <div className="mt-[10px] text-center text-[13px] leading-[1.45]">{headline}</div>
+      <div className="mt-[11px] flex items-center justify-center gap-5 text-[10px] text-[#8c8c8c]"><span>{when(sensor.lastUpdate)}</span><span>{beach(sensor.id)}</span></div>
     </article>
   );
 }
 
 function Compact({ sensor, onClick }) {
   return (
-    <button type="button" className="grid grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-2 rounded-[4px] border border-[#dfe4eb] bg-[#fcfcfd] px-3 py-2 text-left" onClick={onClick}>
+    <button type="button" className="grid min-h-[43px] grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-2 border border-[#cccfd4] bg-[#fcfcfd] px-[8px] py-[10px] text-left" onClick={onClick}>
       <span className="h-[7px] w-[7px] rounded-full" style={{ background: sensor.status === "danger" ? "#e31414" : sensor.status === "warning" ? "#ffcf0f" : sensor.status === "offline" ? "#9ca3af" : "#14a1e3" }} />
-      <div><div className="text-[10px] font-medium">{person(sensor.id).name} {sensor.bpm || 0}bpm</div><div className="text-[7px] text-[#a1a1a1]">{when(sensor.lastUpdate)}</div></div>
-      <div className="text-[10px] font-medium">{score(sensor)}점</div>
+      <div><div className="text-[10px] font-medium leading-[1]">{person(sensor.id).name}</div><div className="mt-[3px] text-[7px] leading-[1] text-[#a1a1a1]">{sensor.bpm || 0}bpm</div></div>
+      <div className="text-right text-[10px] font-medium">{score(sensor)}<span className="ml-[1px] text-[7px] text-[#a1a1a1]">점</span></div>
     </button>
   );
 }
@@ -464,32 +498,65 @@ function IncidentCard({ incident }) {
   const p = person(incident.sensor_id || 1);
   const status = incident.status === "active" ? ["진행중", "bg-[#20b2aa] text-white"] : incident.status === "resolved" ? ["처리완료", "bg-[#113f67] text-white"] : ["오탐", "bg-[#ececec] text-[#666]"];
   const urgency = incident.status === "active" ? ["P1", "bg-[#e31414]"] : ["P2", "bg-[#ffcf0f]"];
+  const minutes = Math.max(2, Number(String(incident.incident_id).slice(-2)) || 8);
   return (
-    <article className="rounded-[14px] bg-[#f2f4f8] px-5 py-4">
+    <article className="rounded-[9px] bg-[#f2f4f8] px-[12px] pb-[10px] pt-[7px]">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3"><span className={`inline-flex h-[12px] min-w-[20px] items-center justify-center text-[8px] text-white ${urgency[1]}`}>{urgency[0]}</span><span className="text-[20px] font-medium tracking-[-0.05em]">{incident.incident_id}</span></div>
-          <div className="mt-2 text-[14px] text-[#8c8c8c]">{p.name} / {incident.type || "과부하"}</div>
+        <div className="flex items-start gap-[6px]">
+          <span className={`mt-3 inline-flex h-[12px] min-w-[20px] items-center justify-center text-[8px] text-white ${urgency[1]}`}>{urgency[0]}</span>
+          <div>
+            <div className="text-[13px] font-medium leading-[18px]">{incident.incident_id}</div>
+            <div className="text-[11px] leading-[18px] text-[#a1a1a1]">{p.name} / {incident.type || "과부하"}</div>
+          </div>
         </div>
-        <span className={`rounded-[2px] px-3 py-1 text-[10px] font-medium ${status[1]}`}>{status[0]}</span>
+        <span className={`mt-[11px] inline-flex h-[14px] min-w-[38px] items-center justify-center rounded-[0px] px-[4px] text-[8px] font-bold ${status[1]}`}>{status[0]}</span>
       </div>
-      <div className="mt-5 text-[16px] leading-[1.5]">{incident.description || "안전구역을 벗어남"}</div>
-      <div className="mt-6 flex flex-wrap items-center gap-4 text-[11px] text-[#8c8c8c]"><span>{fmt(incident.created_at)}</span><span>{beach(incident.sensor_id || 1)}</span><span>{Math.max(2, Number(String(incident.incident_id).slice(-2)) || 8)}분</span><span>{p.name}</span></div>
+      <div className="mt-[10px] text-[13px] leading-[18px]">{incident.description || "안전구역을 벗어남"}</div>
+      <div className="mt-[13px] flex flex-wrap items-center gap-[12px] text-[9px] text-[#a1a1a1]">
+        <span>{fmt(incident.created_at).replace(" ", "   ")}</span>
+        <span>{beach(incident.sensor_id || 1)}</span>
+        <span>{minutes}분</span>
+        <span>{coach(incident.sensor_id || 1)}</span>
+      </div>
     </article>
   );
 }
 
 function Device({ sensor }) {
-  const p = person(sensor.id);
   const level = battery(sensor);
-  const accent = sensor.status === "danger" ? "#ff3d3d" : sensor.status === "warning" ? "#ffcf0f" : "#29bf5b";
+  const availability = deviceAvailability(sensor);
+  const assignee = sensor.connected ? person(sensor.id).name : "미할당";
+  const statusClass = sensor.status === "danger" || sensor.status === "offline" ? "text-[#e31414]" : sensor.status === "warning" ? "text-[#054067]" : "text-[#054067]";
   return (
-    <article className="rounded-[18px] bg-[#f2f4f8] px-4 py-3 shadow-soft">
-      <div className="flex items-start justify-between gap-4"><div><div className="text-[12px] font-medium">Ocean Guard {sensor.id}</div><div className="mt-1 text-[11px] text-[#a1a1a1]">Aqua Tracker Pro</div></div><div className="flex items-end gap-1"><span className="h-3 w-1 rounded-full" style={{ background: accent, opacity: 0.5 }} /><span className="h-4 w-1 rounded-full" style={{ background: accent, opacity: 0.7 }} /><span className="h-5 w-1 rounded-full" style={{ background: accent }} /></div></div>
-      <div className="mt-3 flex items-center justify-between text-[8px]"><span className="rounded-[2px] bg-[#1f5a82] px-2 py-1 text-white">{sensor.connected ? "대여중" : "정비"}</span><span className="text-[#8c8c8c]">{level}%</span></div>
-      <div className="mt-3"><div className="mb-1 text-[7px] text-[#8c8c8c]">배터리</div><div className="h-[4px] rounded-full bg-white"><div className="h-[4px] rounded-full bg-[#1f5a82]" style={{ width: `${level}%` }} /></div></div>
-      <div className="mt-2 flex justify-between text-[8px]"><span className="text-[#8c8c8c]">배터리</span><span className={sensor.status === "danger" ? "text-[#ff3d3d]" : sensor.status === "warning" ? "text-[#64748b]" : "text-[#1f5a82]"}>{statusText(sensor.status)}</span></div>
-      <div className="mt-4 flex items-center gap-2 text-[10px] text-[#4b5563]"><span className="text-[#29bf5b]">◔</span><span>{sensor.connected ? p.name : "미할당"}</span></div>
+    <article className="rounded-[15px] bg-[#f2f4f8] px-[16px] pb-[8px] pt-[10px] shadow-soft">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-[12.5px] font-medium leading-[15px]">Ocean Guard {sensor.id}</div>
+          <div className="mt-[4px] text-[12.5px] font-light leading-[15px] text-[#a1a1a1]">Aqua Tracker Pro</div>
+        </div>
+        <div className="flex items-end gap-[1.5px] pt-[1px]">
+          <span className="h-[5px] w-[2px] rounded-full" style={{ background: availability.iconColor, opacity: 0.55 }} />
+          <span className="h-[7px] w-[2px] rounded-full" style={{ background: availability.iconColor, opacity: 0.75 }} />
+          <span className="h-[9px] w-[2px] rounded-full" style={{ background: availability.iconColor }} />
+        </div>
+      </div>
+      <div className="mt-[10px] flex items-center justify-between text-[7.5px] text-[#5c5c5c]">
+        <span className={`inline-flex h-[11px] min-w-[24px] items-center justify-center px-[4px] text-[5.8px] font-semibold ${availability.pillClass}`}>{availability.label}</span>
+        <span>{level}%</span>
+      </div>
+      <div className="mt-[4px]">
+        <div className="h-[3.8px] rounded-[11px] bg-white">
+          <div className="h-[3.8px] rounded-[11px] bg-[#054067]" style={{ width: `${level}%` }} />
+        </div>
+      </div>
+      <div className="mt-[8px] flex items-center justify-between text-[8.7px]">
+        <span className="text-[#919191]">배터리</span>
+        <span className={statusClass}>{statusText(sensor.status)}</span>
+      </div>
+      <div className="mt-[9px] flex h-[21px] items-center gap-2 rounded-[10px] bg-[rgba(255,255,255,0.52)] px-[11px] text-[8.7px] text-[#21272a]">
+        <span className={sensor.connected ? "text-[#29bf5b]" : "text-[#a1a1a1]"}>{sensor.connected ? "◉" : "◎"}</span>
+        <span className={sensor.connected ? "" : "text-[#a1a1a1]"}>{assignee}</span>
+      </div>
     </article>
   );
 }
@@ -531,9 +598,66 @@ function Chip({ active = false, children, onClick = () => {} }) {
   return <button type="button" className={`rounded-[8px] border px-4 py-1.5 text-[10px] ${active ? "border-[#113f67] bg-[#113f67] text-white" : "border-[#dfe4eb] bg-white text-[#666]"}`} onClick={onClick}>{children}</button>;
 }
 
-function Avatar({ label, tone, className = "" }) {
+function RegionSelect({ value, onChange, size = "md" }) {
+  const [open, setOpen] = useState(false);
+  const buttonClass = size === "sm" ? "h-[24px] min-w-[101px] px-4 text-[10px]" : "h-[30px] min-w-[101px] px-4 text-[10px]";
+
+  return (
+    <div className="relative">
+      <button type="button" className={`flex items-center justify-between rounded-[18px] border border-[#e4e9f1] bg-white ${buttonClass}`} onClick={() => setOpen((current) => !current)}>
+        <span>{value}</span>
+        <svg className={`h-4 w-4 text-[#21272a] transition-transform ${open ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <path d="M8 10L12 14L16 10" />
+        </svg>
+      </button>
+      {open ? (
+        <div className="absolute right-0 top-[calc(100%+4px)] z-10 w-[111px] overflow-hidden rounded-[18px] bg-white shadow-[1px_4px_4px_rgba(0,0,0,0.25)]">
+          {regions.map((item, index) => (
+            <button
+              key={item}
+              type="button"
+              className={`flex h-[26px] w-full items-center justify-center bg-white text-[10px] text-[#808080] ${index < regions.length - 1 ? "border-b border-[rgba(0,0,0,0.1)]" : ""} ${item === value ? "font-semibold" : ""}`}
+              onClick={() => {
+                onChange(item);
+                setOpen(false);
+              }}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Avatar({ label, src, className = "" }) {
+  if (src) {
+    return <img alt="" className={`h-[37.5px] w-[37.5px] rounded-full object-cover ${className}`} src={src} />;
+  }
+
   const tones = ["from-[#1f5a82] to-[#2aa9b5]", "from-[#f39c6b] to-[#d87553]", "from-[#4f81c7] to-[#224f8a]", "from-[#b1b6bf] to-[#eceff4]"];
-  return <div className={`flex h-[37.5px] w-[37.5px] items-center justify-center rounded-full bg-gradient-to-br text-[14px] font-medium text-white ${tones[(Number(tone) - 1 + tones.length) % tones.length]} ${className}`}>{label}</div>;
+  return <div className={`flex h-[37.5px] w-[37.5px] items-center justify-center rounded-full bg-gradient-to-br text-[14px] font-medium text-white ${tones[0]} ${className}`}>{label}</div>;
+}
+
+function BatteryIcon({ level, className = "" }) {
+  return (
+    <div className={`relative ${className}`}>
+      <div className="absolute inset-x-[8px] bottom-[4px] top-[7px] rounded-[1px] border border-[#054067]" />
+      <div className="absolute left-[9px] right-[9px] top-[10px] h-[8px] rounded-[0.8px] bg-[#2dabb3]" style={{ opacity: Math.max(0.25, level / 100) }} />
+      <div className="absolute left-[9px] right-[9px] top-[4px] h-[3px] rounded-t-[1px] bg-[#054067]" />
+    </div>
+  );
+}
+
+function MoreDots({ className = "" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="6" cy="12" r="1.6" />
+      <circle cx="12" cy="12" r="1.6" />
+      <circle cx="18" cy="12" r="1.6" />
+    </svg>
+  );
 }
 
 function Logo({ className = "" }) {
