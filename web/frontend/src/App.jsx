@@ -18,6 +18,24 @@ const guestPortraits = {
   7: "https://www.figma.com/api/mcp/asset/420df85e-a468-43e8-809f-605af6fe24cc",
   8: "https://www.figma.com/api/mcp/asset/6114f082-5616-4d9e-a343-229e2759e29a"
 };
+const fallbackSensors = [
+  { id: 1, bpm: 185, status: "danger", connected: true, battery: 85, finger: 1, lat: 35.1787, lon: 129.1992, lastUpdate: "2026-03-31T10:33:00+09:00" },
+  { id: 2, bpm: 156, status: "warning", connected: true, battery: 63, finger: 1, lat: 35.1762, lon: 129.1984, lastUpdate: "2026-03-31T10:28:00+09:00" },
+  { id: 3, bpm: 110, status: "warning", connected: true, battery: 45, finger: 0, lat: 35.1738, lon: 129.1978, lastUpdate: "2026-03-31T10:26:00+09:00" },
+  { id: 4, bpm: 103, status: "normal", connected: true, battery: 21, finger: 1, lat: 35.1716, lon: 129.1967, lastUpdate: "2026-03-31T10:22:00+09:00" },
+  { id: 5, bpm: 96, status: "normal", connected: true, battery: 18, finger: 1, lat: 35.1695, lon: 129.1958, lastUpdate: "2026-03-31T10:20:00+09:00" },
+  { id: 6, bpm: 101, status: "normal", connected: false, battery: 12, finger: 1, lat: 35.1678, lon: 129.1949, lastUpdate: "2026-03-31T10:18:00+09:00" },
+  { id: 7, bpm: 82, status: "normal", connected: false, battery: 8, finger: 1, lat: 35.1659, lon: 129.1938, lastUpdate: "2026-03-31T10:16:00+09:00" },
+  { id: 8, bpm: 90, status: "normal", connected: true, battery: 5, finger: 1, lat: 35.1644, lon: 129.1928, lastUpdate: "2026-03-31T10:14:00+09:00" }
+];
+const fallbackIncidents = [
+  { incident_id: "SJ-2025-026", sensor_id: 1, description: "심박수 185bpm, HRV 급락 감지", type: "과부하", status: "active", created_at: "2026-03-31T10:33:00+09:00" },
+  { incident_id: "SJ-2025-025", sensor_id: 2, description: "지속적 고심박, 휴식 필요", type: "피로누적", status: "resolved", created_at: "2026-03-31T10:28:00+09:00" },
+  { incident_id: "DDP-2025-024", sensor_id: 3, description: "안전구역을 벗어남", type: "지오펜스 이탈", status: "false_alarm", created_at: "2026-03-31T10:24:00+09:00" },
+  { incident_id: "BH-2025-023", sensor_id: 4, description: "안전구역을 벗어남", type: "지오펜스 이탈", status: "resolved", created_at: "2026-03-31T10:18:00+09:00" },
+  { incident_id: "WP-2025-022", sensor_id: 5, description: "부상 우려, 휴식 권장", type: "과부하", status: "resolved", created_at: "2026-03-31T10:12:00+09:00" },
+  { incident_id: "SJ-2025-021", sensor_id: 6, description: "안전구역 경계선", type: "지오펜스 이탈", status: "resolved", created_at: "2026-03-31T10:08:00+09:00" }
+];
 
 const people = [
   ["김철수", 32],
@@ -169,9 +187,11 @@ export default function App() {
   }, []);
 
   const ordered = sortSensors(sensors);
-  const selected = ordered.find((item) => String(item.id) === String(selectedId)) || ordered[0] || null;
-  const alerts = ordered.filter((item) => item.status !== "normal" && item.status !== "offline");
-  const shownIncidents = incidents
+  const liveSensors = ordered.length ? ordered : fallbackSensors;
+  const liveIncidents = incidents.length ? incidents : fallbackIncidents;
+  const selected = liveSensors.find((item) => String(item.id) === String(selectedId)) || liveSensors[0] || null;
+  const alerts = liveSensors.filter((item) => item.status !== "normal" && item.status !== "offline");
+  const shownIncidents = liveIncidents
     .filter((item) => {
       if (filter === "all") return true;
       const date = new Date(item.created_at);
@@ -212,21 +232,21 @@ export default function App() {
 
       {mobileNav ? <button type="button" className="fixed inset-0 z-20 bg-slate-900/30 xl:hidden" onClick={() => setMobileNav(false)} /> : null}
 
-      <main className="relative xl:ml-[256px]">
+      <main className="relative xl:ml-[256px] xl:min-h-screen">
         <header className="mx-3 mt-3 flex items-center justify-between rounded-[16px] bg-white px-4 py-3 shadow-soft xl:hidden">
           <button type="button" onClick={() => setMobileNav(true)}><Icon name="menu" /></button>
           <div className="text-[14px] font-medium tracking-[0.08em] text-[#113f67]">MARINE GUARD</div>
           <span className={`h-2.5 w-2.5 rounded-full ${serial.connected ? "bg-[#18b26b]" : "bg-[#9ca3af]"}`} />
         </header>
 
-        <div className="mx-auto max-w-[985px] px-3 pb-6 pt-3 md:px-5 md:pb-8 md:pt-5 xl:px-0">
-          <div className="min-h-[785px] rounded-[20px] bg-[#f2f4f8] px-4 py-[17px] shadow-panel">
+        <div className="w-full px-3 pb-6 pt-3 md:px-5 md:pb-8 md:pt-5 xl:px-0 xl:pr-6 xl:pt-6">
+          <div className="min-h-[785px] w-full rounded-[20px] bg-[#f2f4f8] px-4 py-[17px] shadow-panel xl:px-[16px]">
             <TopBar alerts={alerts} />
-            {page === "dashboard" ? <Dashboard ordered={ordered} alerts={alerts} region={region} onRegion={setRegion} onSelect={(id) => { setSelectedId(String(id)); setPage("livemap"); }} /> : null}
-            {page === "livemap" ? <LiveMap selected={selected} ordered={ordered} region={region} onRegion={setRegion} onSelect={(id) => setSelectedId(String(id))} /> : null}
+            {page === "dashboard" ? <Dashboard ordered={liveSensors} alerts={alerts} region={region} onRegion={setRegion} onSelect={(id) => { setSelectedId(String(id)); setPage("livemap"); }} /> : null}
+            {page === "livemap" ? <LiveMap selected={selected} ordered={liveSensors} region={region} onRegion={setRegion} onSelect={(id) => setSelectedId(String(id))} /> : null}
             {page === "incidents" ? <Incidents incidents={shownIncidents} filter={filter} query={query} onFilter={setFilter} onQuery={setQuery} /> : null}
-            {page === "devices" ? <Devices ordered={ordered} /> : null}
-            {page === "reports" ? <Reports ordered={ordered} incidents={incidents} /> : null}
+            {page === "devices" ? <Devices ordered={liveSensors} /> : null}
+            {page === "reports" ? <Reports ordered={liveSensors} incidents={liveIncidents} /> : null}
             {page === "settings" ? <Settings serial={serial} /> : null}
           </div>
         </div>
@@ -270,10 +290,10 @@ function Dashboard({ ordered, alerts, region, onRegion, onSelect }) {
         <div className="text-[17px] font-medium leading-[1.2]">해양안전 실시간 모니터링</div>
         <div className="mt-2 text-[13px] text-white/90">현재 {ordered.length || 24}명의 게스트가 안전하게 해양레저를 즐기고 있습니다</div>
       </section>
-      <div className="grid gap-4 xl:grid-cols-[361px_576px]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(340px,1.02fr)_minmax(460px,1.63fr)]">
         <div className="rounded-[12px] bg-white px-[13px] pb-[14px] pt-[15px] shadow-soft">
           <div className="mb-[15px] text-[15px] font-medium">활성 게스트</div>
-          <div className="flex max-h-[269px] flex-col gap-[6px] overflow-auto pr-1">{ordered.slice(0, 6).map((sensor) => <GuestRow key={sensor.id} sensor={sensor} onClick={() => onSelect(sensor.id)} />)}</div>
+          <div className="grid max-h-[306px] gap-[6px] overflow-auto pr-1 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">{ordered.slice(0, 8).map((sensor) => <GuestRow key={sensor.id} sensor={sensor} onClick={() => onSelect(sensor.id)} />)}</div>
         </div>
         <div className="rounded-[12px] bg-white px-[13px] pb-[15px] pt-[10px] shadow-soft">
           <div className="mb-[13px] flex items-center justify-between">
@@ -285,7 +305,7 @@ function Dashboard({ ordered, alerts, region, onRegion, onSelect }) {
       </div>
       <div className="rounded-[12px] bg-white p-[13px] shadow-soft">
         <div className="mb-4 text-[15px] font-medium">알림</div>
-        <div className="flex gap-3 overflow-x-auto pb-1">{(alerts.length ? alerts : ordered.slice(0, 4)).map((sensor) => <AlertCard key={sensor.id} sensor={sensor} />)}</div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">{(alerts.length ? alerts : ordered.slice(0, 4)).map((sensor) => <AlertCard key={sensor.id} sensor={sensor} />)}</div>
       </div>
     </div>
   );
@@ -293,7 +313,7 @@ function Dashboard({ ordered, alerts, region, onRegion, onSelect }) {
 
 function LiveMap({ selected, ordered, region, onRegion, onSelect }) {
   return (
-    <div className="grid gap-4 xl:grid-cols-[576px_361px]">
+    <div className="grid gap-4 xl:grid-cols-[minmax(520px,1.58fr)_minmax(320px,1fr)]">
       <div className="rounded-[12px] bg-white px-[13px] pb-[16px] pt-[12px] shadow-soft">
         <div className="mb-3 flex items-center justify-between">
           <div className="text-[15px] font-medium">라이브 맵</div>
@@ -316,7 +336,7 @@ function LiveMap({ selected, ordered, region, onRegion, onSelect }) {
           </div>
         </div>
         <button type="button" className="h-[28px] rounded-[18px] bg-[#e2e2e2] text-[10px] text-[#8c8c8c]">요원 긴급 배정</button>
-        <div className="grid gap-[13px] sm:grid-cols-2 xl:grid-cols-2">
+        <div className="grid gap-[13px] sm:grid-cols-2">
           <Panel title="위험 스코어"><Gauge value={score(selected)} /></Panel>
           <Panel title="심박수"><Heart bpm={selected?.finger === 0 ? "---" : `${selected?.bpm || "---"}bpm`} /></Panel>
         </div>
@@ -332,7 +352,7 @@ function LiveMap({ selected, ordered, region, onRegion, onSelect }) {
 
 function Incidents({ incidents, filter, query, onFilter, onQuery }) {
   return (
-    <div className="flex flex-col gap-[14px] xl:max-w-[576px]">
+    <div className="flex flex-col gap-[14px]">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="pt-[4px] text-[15px] font-medium leading-[16px]">사건 로그</div>
         <div className="flex flex-wrap items-center gap-[10px] sm:justify-end">
@@ -378,6 +398,28 @@ function Devices({ ordered }) {
 function Reports({ ordered, incidents }) {
   const danger = ordered.filter((sensor) => sensor.status === "danger").length;
   const warning = ordered.filter((sensor) => sensor.status === "warning").length;
+  const normal = Math.max(ordered.length - warning - danger, 0);
+  const active = incidents.filter((incident) => incident.status === "active").length;
+  const resolved = incidents.filter((incident) => incident.status === "resolved").length;
+  const trend = [0.48, 0.56, 0.61, 0.58, 0.7, 0.84, 0.78].map((ratio, index) => {
+    const live = ordered.length || 8;
+    return Math.max(2, Math.round(live * ratio) + (index === 4 ? warning : 0) + (index === 5 ? danger : 0));
+  });
+  const trendMax = Math.max(...trend, 1);
+  const trendPoints = trend.map((value, index) => ({
+    x: 36 + index * 88,
+    y: 216 - (value / trendMax) * 146
+  }));
+  const trendLine = trendPoints.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  const trendArea = `${trendLine} L ${trendPoints[trendPoints.length - 1].x} 216 L ${trendPoints[0].x} 216 Z`;
+  const incidentBars = [
+    { label: "위험", value: Math.max(danger, 1), color: "#e31414" },
+    { label: "주의", value: Math.max(warning, 1), color: "#ffcf0f" },
+    { label: "진행", value: Math.max(active, 1), color: "#14a1e3" },
+    { label: "완료", value: Math.max(resolved, 1), color: "#113f67" }
+  ];
+  const incidentMax = Math.max(...incidentBars.map((item) => item.value), 1);
+
   return (
     <div className="flex flex-col gap-4">
       <div className="text-[28px] font-medium leading-none">리포트</div>
@@ -386,13 +428,64 @@ function Reports({ ordered, incidents }) {
         <Panel title="주의 상태"><div className="text-[42px] font-medium text-[#113f67]">{warning}</div></Panel>
         <Panel title="오늘 사건"><div className="text-[42px] font-medium text-[#e31414]">{incidents.length}</div></Panel>
       </div>
-      <Panel title="상태 분포">
-        <div className="mt-6 flex h-[220px] items-end justify-between gap-4">
-          {[["정상", Math.max(ordered.length - warning - danger, 1), "#14a1e3"], ["주의", Math.max(warning, 1), "#ffcf0f"], ["위험", Math.max(danger, 1), "#e31414"]].map(([label, value, color]) => (
-            <div key={label} className="flex flex-1 flex-col items-center gap-3"><div className="w-full rounded-t-[12px]" style={{ height: `${Math.max(24, Number(value) * 42)}px`, background: color }} /><div className="text-[11px] text-[#8c8c8c]">{label}</div></div>
-          ))}
-        </div>
-      </Panel>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.72fr)_minmax(260px,0.78fr)]">
+        <Panel title="상태 분포">
+          <div className="rounded-[12px] bg-[#f7f9fc] p-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-[10px] bg-white px-4 py-3">
+                <div className="text-[10px] text-[#8c8c8c]">정상</div>
+                <div className="mt-2 text-[24px] font-medium text-[#14a1e3]">{normal}</div>
+              </div>
+              <div className="rounded-[10px] bg-white px-4 py-3">
+                <div className="text-[10px] text-[#8c8c8c]">주의</div>
+                <div className="mt-2 text-[24px] font-medium text-[#ffb100]">{warning}</div>
+              </div>
+              <div className="rounded-[10px] bg-white px-4 py-3">
+                <div className="text-[10px] text-[#8c8c8c]">위험</div>
+                <div className="mt-2 text-[24px] font-medium text-[#e31414]">{danger}</div>
+              </div>
+            </div>
+            <div className="mt-4 overflow-hidden rounded-[12px] bg-white px-4 py-3">
+              <svg viewBox="0 0 600 240" className="h-[240px] w-full">
+                {[0, 1, 2, 3].map((step) => <line key={step} x1="24" x2="576" y1={52 + step * 41} y2={52 + step * 41} stroke="#e9edf4" strokeWidth="1" />)}
+                <path d={trendArea} fill="rgba(20,161,227,0.14)" />
+                <path d={trendLine} fill="none" stroke="#14a1e3" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                {trendPoints.map((point, index) => (
+                  <g key={index}>
+                    <circle cx={point.x} cy={point.y} r="6" fill="#ffffff" stroke="#14a1e3" strokeWidth="3" />
+                    <text x={point.x} y="232" textAnchor="middle" fill="#8c8c8c" fontSize="11">{`${index + 9}시`}</text>
+                  </g>
+                ))}
+              </svg>
+            </div>
+          </div>
+        </Panel>
+        <Panel title="사건 현황">
+          <div className="flex h-full min-h-[365px] flex-col rounded-[12px] bg-[#f7f9fc] p-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+              <div className="rounded-[10px] bg-white px-4 py-3">
+                <div className="text-[10px] text-[#8c8c8c]">진행중 사건</div>
+                <div className="mt-2 text-[24px] font-medium text-[#113f67]">{active}</div>
+              </div>
+              <div className="rounded-[10px] bg-white px-4 py-3">
+                <div className="text-[10px] text-[#8c8c8c]">처리 완료</div>
+                <div className="mt-2 text-[24px] font-medium text-[#14a1e3]">{resolved}</div>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-1 items-end gap-3">
+              {incidentBars.map((item) => (
+                <div key={item.label} className="flex flex-1 flex-col items-center gap-3">
+                  <div className="w-full rounded-t-[12px]" style={{ height: `${Math.max(42, (item.value / incidentMax) * 170)}px`, background: item.color }} />
+                  <div className="text-center">
+                    <div className="text-[11px] font-medium">{item.value}</div>
+                    <div className="mt-1 text-[10px] text-[#8c8c8c]">{item.label}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Panel>
+      </div>
     </div>
   );
 }
@@ -474,7 +567,7 @@ function AlertCard({ sensor }) {
   const [label, style] = priority(sensor);
   const headline = sensor.status === "danger" ? `심박수 ${sensor.bpm || 185}bpm, HRV 급락 감지` : sensor.finger === 0 ? "안전구역을 벗어남" : "지속적 고심박, 휴식 필요";
   return (
-    <article className="h-[131px] w-[221px] flex-none rounded-[9px] bg-[#f2f4f8] px-6 py-4">
+    <article className="min-h-[131px] w-full rounded-[9px] bg-[#f2f4f8] px-6 py-4">
       <span className={`inline-flex min-w-[20px] justify-center px-[5px] py-px text-[8px] ${style}`}>{label}</span>
       <div className="mt-[10px] text-center text-[18px] font-medium">{p.name}</div>
       <div className="mt-1 text-center text-[11px] text-[#a1a1a1]">{beach(sensor.id)} / 위험스코어 {score(sensor)}</div>
