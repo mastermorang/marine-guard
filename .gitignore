@@ -6,6 +6,7 @@ web/dist/
 web/marineguard.db
 web/marineguard.db-shm
 web/marineguard.db-wal
+station-monitor/out/
 
 # Bundled local JRE
 java/
