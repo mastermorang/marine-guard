@@ -193,8 +193,8 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         JFileChooser chooser = new JFileChooser(); chooser.setSelectedFile(new File("marine-guard-events.csv"));
         if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(chooser.getSelectedFile()))) {
-            writer.write("timestamp,level,message"); writer.newLine();
-            for (EventEntry entry : eventEntries) { writer.write("\"" + entry.formatCsvTimestamp() + "\"," + entry.getLevel() + ",\"" + entry.getMessage().replace("\"", "\"\"") + "\""); writer.newLine(); }
+            writer.write("time,device_name,status,location_relative_to_receiver,satellite_coordinates"); writer.newLine();
+            for (EventEntry entry : eventEntries) { writer.write(entry.formatCsvRow()); writer.newLine(); }
             appendEvent(EventEntry.Level.INFO, "Event log exported: " + chooser.getSelectedFile().getAbsolutePath());
         } catch (IOException ex) { JOptionPane.showMessageDialog(this, "Export failed: " + ex.getMessage(), "Export", JOptionPane.ERROR_MESSAGE); }
     }
@@ -267,6 +267,19 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
 
     private void refreshReceiverReferenceLabel() { receiverRefLabel.setText(referenceText()); }
     private void appendEvent(EventEntry.Level level, String message) { eventEntries.add(new EventEntry(System.currentTimeMillis(), level, message)); while (eventEntries.size() > 500) eventEntries.remove(0); refreshEventLog(); }
+    private void appendTelemetryEvent(DeviceTelemetry telemetry, EventEntry.Level level, String message) {
+        String deviceName = telemetry.getGuestName().isEmpty() ? "D" + telemetry.getDeviceId() : telemetry.getGuestName();
+        String status = telemetry.getEmergency() > 0 ? "EMERGENCY" : telemetry.getStatusText(System.currentTimeMillis());
+        double distanceMeters = ReceiverLocation.calculateDistance(config.getRefLat(), config.getRefLon(), telemetry.getLatitude(), telemetry.getLongitude());
+        boolean gpsWeak = !ReceiverLocation.hasGpsFix(config.getRefLat(), config.getRefLon())
+                || !ReceiverLocation.hasGpsFix(telemetry.getLatitude(), telemetry.getLongitude())
+                || distanceMeters > 1000000.0d;
+        String relativeLocation = gpsWeak ? "GPS No Fix" : String.format("%.0fm", distanceMeters);
+        String coordinates = String.format("%.6f, %.6f", telemetry.getLatitude(), telemetry.getLongitude());
+        eventEntries.add(new EventEntry(System.currentTimeMillis(), level, message, deviceName, status, relativeLocation, coordinates));
+        while (eventEntries.size() > 500) eventEntries.remove(0);
+        refreshEventLog();
+    }
     private void refreshEventLog() { StringBuilder b = new StringBuilder(); for (EventEntry e : eventEntries) if (allFilterButton.isSelected() || warningFilterButton.isSelected() && e.getLevel() == EventEntry.Level.WARNING || emergencyFilterButton.isSelected() && e.getLevel() == EventEntry.Level.EMERGENCY) b.append(e.formatLine()).append('\n'); eventLogArea.setText(b.toString()); eventLogArea.setCaretPosition(eventLogArea.getDocument().getLength()); }
     private EventEntry.Level classify(DeviceTelemetry telemetry) {
         long now = System.currentTimeMillis();
@@ -312,7 +325,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
 
     @Override public void onConnected(String portName) { disconnectWarningShown = false; appendEvent(EventEntry.Level.INFO, "Receiver connected on " + portName); updateHeaderStatus(); }
     @Override public void onDisconnected(String reason) { appendEvent(EventEntry.Level.WARNING, "Receiver disconnected: " + reason); updateHeaderStatus(); if (!"user request".equals(reason) && !"window closing".equals(reason) && !"reconnect".equals(reason) && !disconnectWarningShown) { disconnectWarningShown = true; SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Receiver link dropped.\nReason: " + reason, "Disconnected", JOptionPane.WARNING_MESSAGE)); } }
-    @Override public void onTelemetry(DeviceTelemetry telemetry, String rawLine) { lastTelemetryAt = telemetry.getReceivedAt(); DeviceTelemetry prev = devices.get(telemetry.getDeviceId()); if (prev != null) telemetry = new DeviceTelemetry(telemetry.getDeviceId(), telemetry.getLatitude(), telemetry.getLongitude(), telemetry.getEmergency(), telemetry.getFinger(), telemetry.getBpm(), telemetry.getBattery() >= 0 ? telemetry.getBattery() : prev.getBattery(), telemetry.getGuestName().isEmpty() ? prev.getGuestName() : telemetry.getGuestName(), telemetry.getPpgValue(), telemetry.hasRawPpg(), telemetry.getReceivedAt()); devices.put(telemetry.getDeviceId(), telemetry); rememberPpgSample(telemetry); refreshDeviceList(); if (selectedDeviceId < 0 || !devices.containsKey(selectedDeviceId)) selectedDeviceId = telemetry.getDeviceId(); selectDevice(selectedDeviceId, true); mapCanvas.setDevices(devices.values(), selectedDeviceId); ppgMonitorFrame.addTelemetry(telemetry); appendEvent(classify(telemetry), describe(telemetry)); updateHeaderStatus(); }
+    @Override public void onTelemetry(DeviceTelemetry telemetry, String rawLine) { lastTelemetryAt = telemetry.getReceivedAt(); DeviceTelemetry prev = devices.get(telemetry.getDeviceId()); if (prev != null) telemetry = new DeviceTelemetry(telemetry.getDeviceId(), telemetry.getLatitude(), telemetry.getLongitude(), telemetry.getEmergency(), telemetry.getFinger(), telemetry.getBpm(), telemetry.getBattery() >= 0 ? telemetry.getBattery() : prev.getBattery(), telemetry.getGuestName().isEmpty() ? prev.getGuestName() : telemetry.getGuestName(), telemetry.getPpgValue(), telemetry.hasRawPpg(), telemetry.getReceivedAt()); devices.put(telemetry.getDeviceId(), telemetry); rememberPpgSample(telemetry); refreshDeviceList(); if (selectedDeviceId < 0 || !devices.containsKey(selectedDeviceId)) selectedDeviceId = telemetry.getDeviceId(); selectDevice(selectedDeviceId, true); mapCanvas.setDevices(devices.values(), selectedDeviceId); ppgMonitorFrame.addTelemetry(telemetry); EventEntry.Level level = classify(telemetry); String message = describe(telemetry); appendTelemetryEvent(telemetry, level, message); updateHeaderStatus(); }
     @Override public void onReceiverLocation(ReceiverLocation r, String rawLine) { lastReceiverLocation = r; appendEvent(EventEntry.Level.INFO, "Receiver GPS updated: " + r.getSource()); if (config.isAutoReceiverLocation()) { config.setRefLat(r.getLatitude()); config.setRefLon(r.getLongitude()); refLatField.setText(String.valueOf(r.getLatitude())); refLonField.setText(String.valueOf(r.getLongitude())); mapCanvas.setReferencePoint(r.getLatitude(), r.getLongitude()); persistConfig(); } refreshReceiverReferenceLabel(); }
     @Override public void onMessage(String message) { appendEvent(EventEntry.Level.INFO, message); }
 }
