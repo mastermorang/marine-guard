@@ -158,7 +158,10 @@ public class MapCanvas extends JPanel {
         if (device.isStale(now)) {
             return AppTheme.OFFLINE;
         }
-        if (device.getBpm() > 120 || (device.getBpm() > 0 && device.getBpm() < 40)) {
+        if (device.getBpm() > 120
+                || (device.getBpm() > 0 && device.getBpm() < 40)
+                || device.hasRssi() && device.getRssiDbm() <= -115
+                || device.hasSnr() && device.getSnrDb() < -7.0d) {
             return AppTheme.WARNING;
         }
         return AppTheme.SUCCESS;

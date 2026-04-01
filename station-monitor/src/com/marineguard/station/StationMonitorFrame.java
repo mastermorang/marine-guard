@@ -25,6 +25,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private final Map<Integer, DeviceTelemetry> devices = new LinkedHashMap<Integer, DeviceTelemetry>();
     private final Map<Integer, Deque<PpgSample>> ppgHistory = new HashMap<Integer, Deque<PpgSample>>();
     private final Map<Integer, Deque<DeviceTrackPoint>> trackHistory = new HashMap<Integer, Deque<DeviceTrackPoint>>();
+    private final Map<Integer, LinkStats> linkStatsByDevice = new HashMap<Integer, LinkStats>();
     private final List<EventEntry> eventEntries = new ArrayList<EventEntry>();
     private final DefaultListModel<DeviceTelemetry> deviceListModel = new DefaultListModel<DeviceTelemetry>();
     private final JList<DeviceTelemetry> deviceList = new JList<DeviceTelemetry>(deviceListModel);
@@ -48,6 +49,11 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private final JLabel selectedGuestLabel = new JLabel("-");
     private final JLabel selectedMetaLabel = new JLabel("-");
     private final JLabel receiverRefLabel = new JLabel("-");
+    private final JLabel linkDistanceLabel = new JLabel("Distance --");
+    private final JLabel linkRssiLabel = new JLabel("RSSI n/a");
+    private final JLabel linkSnrLabel = new JLabel("SNR n/a");
+    private final JLabel linkSeqLabel = new JLabel("SEQ n/a");
+    private final JLabel linkPrrLabel = new JLabel("PRR n/a");
     private final JLabel ppgSummaryLabel = new JLabel("min -- / max -- / avg --");
     private final VitalsGaugePanel vitalsGauge = new VitalsGaugePanel();
     private final PpgChartPanel ppgChart = new PpgChartPanel();
@@ -116,15 +122,19 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         JLabel mapHelp = new JLabel("Wheel: zoom  |  Drag: pan  |  Receiver stays at center"); mapHelp.setForeground(AppTheme.TEXT_MUTED); mapHelp.setHorizontalAlignment(SwingConstants.RIGHT);
         center.add(mapCanvas, BorderLayout.CENTER); center.add(mapHelp, BorderLayout.SOUTH);
 
-        JPanel right = new JPanel(new BorderLayout(10, 10)); right.setOpaque(false); right.setPreferredSize(new Dimension(420, 0));
+        JPanel right = new JPanel(new BorderLayout(10, 10)); right.setOpaque(false); right.setPreferredSize(new Dimension(440, 0));
         JPanel selected = new JPanel(new GridLayout(4, 1, 6, 6)); AppTheme.styleCard(selected); selected.setBorder(AppTheme.sectionBorder("Selected Device"));
         styleInfo(selectedTitleLabel, 22f, true); styleInfo(selectedGuestLabel, 18f, false); styleInfo(selectedMetaLabel, 14f, false); styleInfo(receiverRefLabel, 13f, false);
         selected.add(selectedTitleLabel); selected.add(selectedGuestLabel); selected.add(selectedMetaLabel); selected.add(receiverRefLabel);
+        JPanel linkPanel = new JPanel(new GridLayout(5, 1, 4, 4)); AppTheme.styleCard(linkPanel); linkPanel.setBorder(AppTheme.sectionBorder("LoRa Link"));
+        styleInfo(linkDistanceLabel, 15f, false); styleInfo(linkRssiLabel, 15f, false); styleInfo(linkSnrLabel, 15f, false); styleInfo(linkSeqLabel, 15f, false); styleInfo(linkPrrLabel, 16f, true);
+        linkPanel.add(linkDistanceLabel); linkPanel.add(linkRssiLabel); linkPanel.add(linkSnrLabel); linkPanel.add(linkSeqLabel); linkPanel.add(linkPrrLabel);
         JPanel vitals = new JPanel(new BorderLayout()); vitals.setBorder(AppTheme.sectionBorder("Vitals")); vitals.setBackground(AppTheme.PANEL); vitals.add(vitalsGauge, BorderLayout.CENTER);
         JPanel ppg = new JPanel(new BorderLayout()); ppg.setBorder(AppTheme.sectionBorder("PPG Waveform")); ppg.setBackground(AppTheme.PANEL); ppg.setPreferredSize(new Dimension(0, 220)); ppg.add(ppgChart, BorderLayout.CENTER);
         JPanel summary = new JPanel(new BorderLayout()); summary.setBorder(AppTheme.sectionBorder("PPG Summary")); summary.setBackground(AppTheme.PANEL); summary.setPreferredSize(new Dimension(0, 90)); styleInfo(ppgSummaryLabel, 16f, false); summary.add(ppgSummaryLabel, BorderLayout.CENTER);
         JPanel rightBottom = new JPanel(new BorderLayout(10, 10)); rightBottom.setOpaque(false); rightBottom.add(ppg, BorderLayout.CENTER); rightBottom.add(summary, BorderLayout.SOUTH);
-        right.add(selected, BorderLayout.NORTH); right.add(vitals, BorderLayout.CENTER); right.add(rightBottom, BorderLayout.SOUTH);
+        JPanel rightTop = new JPanel(new BorderLayout(10, 10)); rightTop.setOpaque(false); rightTop.add(selected, BorderLayout.NORTH); rightTop.add(linkPanel, BorderLayout.SOUTH);
+        right.add(rightTop, BorderLayout.NORTH); right.add(vitals, BorderLayout.CENTER); right.add(rightBottom, BorderLayout.SOUTH);
 
         body.add(left, BorderLayout.WEST); body.add(center, BorderLayout.CENTER); body.add(right, BorderLayout.EAST); return body;
     }
@@ -196,7 +206,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         JFileChooser chooser = new JFileChooser(); chooser.setSelectedFile(new File("marine-guard-events.csv"));
         if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(chooser.getSelectedFile()))) {
-            writer.write("time,device_name,status,location_relative_to_receiver,satellite_coordinates"); writer.newLine();
+            writer.write("time,device_name,status,location_relative_to_receiver,distance_m,satellite_coordinates,rssi_dbm,snr_db,prr_percent"); writer.newLine();
             for (EventEntry entry : eventEntries) { writer.write(entry.formatCsvRow()); writer.newLine(); }
             appendEvent(EventEntry.Level.INFO, "Event log exported: " + chooser.getSelectedFile().getAbsolutePath());
         } catch (IOException ex) { JOptionPane.showMessageDialog(this, "Export failed: " + ex.getMessage(), "Export", JOptionPane.ERROR_MESSAGE); }
@@ -209,7 +219,22 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         if (selected == null) { JOptionPane.showMessageDialog(this, "Select a device first.", "No device", JOptionPane.WARNING_MESSAGE); return; }
         String next = JOptionPane.showInputDialog(this, "Assign guest name to D" + selected.getDeviceId(), selected.getGuestName());
         if (next == null) return;
-        DeviceTelemetry updated = new DeviceTelemetry(selected.getDeviceId(), selected.getLatitude(), selected.getLongitude(), selected.getEmergency(), selected.getFinger(), selected.getBpm(), selected.getBattery(), next.trim(), selected.getPpgValue(), selected.hasRawPpg(), selected.getReceivedAt());
+        DeviceTelemetry updated = new DeviceTelemetry(
+                selected.getDeviceId(),
+                selected.getLatitude(),
+                selected.getLongitude(),
+                selected.getEmergency(),
+                selected.getFinger(),
+                selected.getBpm(),
+                selected.getBattery(),
+                next.trim(),
+                selected.getPpgValue(),
+                selected.hasRawPpg(),
+                selected.getRssiDbm(),
+                selected.getSnrDb(),
+                selected.getSequence(),
+                selected.getReceivedAt()
+        );
         devices.put(updated.getDeviceId(), updated); refreshDeviceList(); selectDevice(updated.getDeviceId(), true); appendEvent(EventEntry.Level.INFO, "Assigned guest " + (updated.getGuestName().isEmpty() ? "(unassigned)" : updated.getGuestName()) + " to D" + updated.getDeviceId());
     }
 
@@ -221,7 +246,11 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
 
     private int severityScore(DeviceTelemetry t) {
         long now = System.currentTimeMillis();
+        LinkStats stats = linkStatsByDevice.get(t.getDeviceId());
         if (t.getBpm() > 120 || (t.getBpm() > 0 && t.getBpm() < 40)) return 4;
+        if (t.hasRssi() && t.getRssiDbm() <= -115) return 3;
+        if (t.hasSnr() && t.getSnrDb() < -7.0d) return 3;
+        if (stats != null && stats.hasPrr() && stats.getPrrPercent() < 90.0d) return 3;
         if (t.isStale(now)) return 2;
         return 0;
     }
@@ -239,11 +268,31 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
 
     private void refreshSelectedPanels() {
         DeviceTelemetry selected = devices.get(selectedDeviceId);
-        if (selected == null) { selectedTitleLabel.setText("No device selected"); selectedGuestLabel.setText("-"); selectedMetaLabel.setText("-"); ppgSummaryLabel.setText("min -- / max -- / avg --"); receiverRefLabel.setText(referenceText()); vitalsGauge.setTelemetry(null); ppgChart.setSamples(new ArrayList<PpgSample>(), false); return; }
+        if (selected == null) {
+            selectedTitleLabel.setText("No device selected");
+            selectedGuestLabel.setText("-");
+            selectedMetaLabel.setText("-");
+            linkDistanceLabel.setText("Distance --");
+            linkRssiLabel.setText("RSSI n/a");
+            linkSnrLabel.setText("SNR n/a");
+            linkSeqLabel.setText("SEQ n/a");
+            linkPrrLabel.setText("PRR n/a");
+            ppgSummaryLabel.setText("min -- / max -- / avg --");
+            receiverRefLabel.setText(referenceText());
+            vitalsGauge.setTelemetry(null);
+            ppgChart.setSamples(new ArrayList<PpgSample>(), false);
+            return;
+        }
         selectedTitleLabel.setText("Device D" + selected.getDeviceId());
         selectedGuestLabel.setText(selected.getGuestName().isEmpty() ? "(unassigned)" : selected.getGuestName());
-        selectedMetaLabel.setText("BPM " + (selected.getBpm() > 0 ? selected.getBpm() : "--") + " | " + selected.getStatusText(System.currentTimeMillis()));
-        receiverRefLabel.setText(referenceText()); vitalsGauge.setTelemetry(selected);
+        selectedMetaLabel.setText("BPM " + (selected.getBpm() > 0 ? selected.getBpm() : "--") + " | " + buildOperationalStatus(selected));
+        linkDistanceLabel.setText("Distance " + formatDistanceLabel(selected));
+        linkRssiLabel.setText("RSSI " + formatRssiLabel(selected));
+        linkSnrLabel.setText("SNR " + formatSnrLabel(selected));
+        linkSeqLabel.setText("SEQ " + (selected.hasSequence() ? String.valueOf(selected.getSequence()) : "n/a"));
+        linkPrrLabel.setText("PRR " + formatPrrLabel(selected));
+        receiverRefLabel.setText(referenceText());
+        vitalsGauge.setTelemetry(selected);
         List<PpgSample> samples = samplesForDevice(selectedDeviceId); boolean raw = hasRawPpg(samples); ppgChart.setSamples(samples, raw); ppgSummaryLabel.setText(buildPpgSummary(samples, raw));
     }
 
@@ -251,6 +300,53 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private List<PpgSample> samplesForDevice(int id) { Deque<PpgSample> h = ppgHistory.get(id); return h == null ? new ArrayList<PpgSample>() : new ArrayList<PpgSample>(h); }
     private boolean hasRawPpg(List<PpgSample> s) { for (PpgSample p : s) if (p.hasRawPpg()) return true; return false; }
     private String buildPpgSummary(List<PpgSample> s, boolean raw) { if (s.isEmpty()) return "min -- / max -- / avg --"; int min = Integer.MAX_VALUE, max = Integer.MIN_VALUE; long sum = 0; int count = 0; for (PpgSample p : s) { int v = raw && p.hasRawPpg() ? p.getPpgValue() : p.getBpm(); min = Math.min(min, v); max = Math.max(max, v); sum += v; count++; } return count == 0 ? "min -- / max -- / avg --" : "min " + min + " / max " + max + " / avg " + (sum / count); }
+
+    private double currentDistance(DeviceTelemetry telemetry) {
+        return ReceiverLocation.calculateDistance(config.getRefLat(), config.getRefLon(), telemetry.getLatitude(), telemetry.getLongitude());
+    }
+
+    private boolean hasGpsWeak(DeviceTelemetry telemetry, double distanceMeters) {
+        return !ReceiverLocation.hasGpsFix(config.getRefLat(), config.getRefLon())
+                || !ReceiverLocation.hasGpsFix(telemetry.getLatitude(), telemetry.getLongitude())
+                || distanceMeters > 1000000.0d;
+    }
+
+    private String formatDistanceLabel(DeviceTelemetry telemetry) {
+        double distanceMeters = currentDistance(telemetry);
+        if (hasGpsWeak(telemetry, distanceMeters)) {
+            return "GPS No Fix";
+        }
+        return String.format("%.0fm", distanceMeters);
+    }
+
+    private String formatRssiLabel(DeviceTelemetry telemetry) {
+        return telemetry.hasRssi() ? telemetry.getRssiDbm() + " dBm" : "n/a";
+    }
+
+    private String formatSnrLabel(DeviceTelemetry telemetry) {
+        return telemetry.hasSnr() ? String.format("%.1f dB", telemetry.getSnrDb()) : "n/a";
+    }
+
+    private String formatPrrLabel(DeviceTelemetry telemetry) {
+        LinkStats stats = linkStatsByDevice.get(telemetry.getDeviceId());
+        return stats != null && stats.hasPrr() ? String.format("%.1f%%", stats.getPrrPercent()) : "n/a";
+    }
+
+    private String buildOperationalStatus(DeviceTelemetry telemetry) {
+        long now = System.currentTimeMillis();
+        if (telemetry.isStale(now)) {
+            return "offline";
+        }
+        LinkStats stats = linkStatsByDevice.get(telemetry.getDeviceId());
+        if (telemetry.getBpm() > 120
+                || telemetry.getBpm() > 0 && telemetry.getBpm() < 40
+                || telemetry.hasRssi() && telemetry.getRssiDbm() <= -115
+                || telemetry.hasSnr() && telemetry.getSnrDb() < -7.0d
+                || stats != null && stats.hasPrr() && stats.getPrrPercent() < 90.0d) {
+            return "warning";
+        }
+        return "active";
+    }
 
     private void rememberPpgSample(DeviceTelemetry telemetry) {
         Deque<PpgSample> h = ppgHistory.get(telemetry.getDeviceId()); if (h == null) { h = new ArrayDeque<PpgSample>(); ppgHistory.put(telemetry.getDeviceId(), h); }
@@ -297,6 +393,16 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         }
     }
 
+    private LinkStats observeLinkStats(DeviceTelemetry telemetry) {
+        LinkStats stats = linkStatsByDevice.get(telemetry.getDeviceId());
+        if (stats == null) {
+            stats = new LinkStats();
+            linkStatsByDevice.put(telemetry.getDeviceId(), stats);
+        }
+        stats.observe(telemetry);
+        return stats;
+    }
+
     private void updateHeaderStatus() {
         boolean connected = serialService.isConnected(); long now = System.currentTimeMillis(); int online = 0;
         for (DeviceTelemetry d : devices.values()) { if (!d.isStale(now)) online++; }
@@ -310,47 +416,72 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private void appendEvent(EventEntry.Level level, String message) { eventEntries.add(new EventEntry(System.currentTimeMillis(), level, message)); while (eventEntries.size() > 500) eventEntries.remove(0); refreshEventLog(); }
     private void appendTelemetryEvent(DeviceTelemetry telemetry, EventEntry.Level level, String message) {
         String deviceName = telemetry.getGuestName().isEmpty() ? "D" + telemetry.getDeviceId() : telemetry.getGuestName();
-        String status = telemetry.getStatusText(System.currentTimeMillis());
-        double distanceMeters = ReceiverLocation.calculateDistance(config.getRefLat(), config.getRefLon(), telemetry.getLatitude(), telemetry.getLongitude());
-        boolean gpsWeak = !ReceiverLocation.hasGpsFix(config.getRefLat(), config.getRefLon())
-                || !ReceiverLocation.hasGpsFix(telemetry.getLatitude(), telemetry.getLongitude())
-                || distanceMeters > 1000000.0d;
+        String status = buildOperationalStatus(telemetry);
+        double distanceMeters = currentDistance(telemetry);
+        boolean gpsWeak = hasGpsWeak(telemetry, distanceMeters);
         String relativeLocation = gpsWeak ? "GPS No Fix" : String.format("%.0fm", distanceMeters);
+        String distanceValue = gpsWeak ? "" : String.format("%.1f", distanceMeters);
         String coordinates = String.format("%.6f, %.6f", telemetry.getLatitude(), telemetry.getLongitude());
-        eventEntries.add(new EventEntry(System.currentTimeMillis(), level, message, deviceName, status, relativeLocation, coordinates));
+        LinkStats stats = linkStatsByDevice.get(telemetry.getDeviceId());
+        String rssiValue = telemetry.hasRssi() ? String.valueOf(telemetry.getRssiDbm()) : "";
+        String snrValue = telemetry.hasSnr() ? String.format("%.1f", telemetry.getSnrDb()) : "";
+        String prrValue = stats != null && stats.hasPrr() ? String.format("%.1f", stats.getPrrPercent()) : "";
+        eventEntries.add(new EventEntry(System.currentTimeMillis(), level, message, deviceName, status, relativeLocation, distanceValue, coordinates, rssiValue, snrValue, prrValue));
         while (eventEntries.size() > 500) eventEntries.remove(0);
         refreshEventLog();
     }
     private void refreshEventLog() { StringBuilder b = new StringBuilder(); for (EventEntry e : eventEntries) if (allFilterButton.isSelected() || warningFilterButton.isSelected() && e.getLevel() == EventEntry.Level.WARNING) b.append(e.formatLine()).append('\n'); eventLogArea.setText(b.toString()); eventLogArea.setCaretPosition(eventLogArea.getDocument().getLength()); }
     private EventEntry.Level classify(DeviceTelemetry telemetry) {
         long now = System.currentTimeMillis();
-        double distanceMeters = ReceiverLocation.calculateDistance(config.getRefLat(), config.getRefLon(), telemetry.getLatitude(), telemetry.getLongitude());
-        boolean gpsWeak = !ReceiverLocation.hasGpsFix(config.getRefLat(), config.getRefLon())
-                || !ReceiverLocation.hasGpsFix(telemetry.getLatitude(), telemetry.getLongitude())
-                || distanceMeters > 1000000.0d;
+        double distanceMeters = currentDistance(telemetry);
+        boolean gpsWeak = hasGpsWeak(telemetry, distanceMeters);
+        LinkStats stats = linkStatsByDevice.get(telemetry.getDeviceId());
         if (telemetry.isStale(now)
                 || telemetry.getBpm() > 120
                 || telemetry.getBpm() > 0 && telemetry.getBpm() < 40
+                || telemetry.hasRssi() && telemetry.getRssiDbm() <= -115
+                || telemetry.hasSnr() && telemetry.getSnrDb() < -7.0d
+                || stats != null && stats.hasPrr() && stats.getPrrPercent() < 90.0d
                 || gpsWeak) return EventEntry.Level.WARNING;
         return EventEntry.Level.INFO;
     }
     private String describe(DeviceTelemetry telemetry) {
         String guest = telemetry.getGuestName().isEmpty() ? "Unassigned guest" : telemetry.getGuestName();
-        double distanceMeters = ReceiverLocation.calculateDistance(config.getRefLat(), config.getRefLon(), telemetry.getLatitude(), telemetry.getLongitude());
-        boolean gpsWeak = !ReceiverLocation.hasGpsFix(config.getRefLat(), config.getRefLon())
-                || !ReceiverLocation.hasGpsFix(telemetry.getLatitude(), telemetry.getLongitude())
-                || distanceMeters > 1000000.0d;
+        double distanceMeters = currentDistance(telemetry);
+        boolean gpsWeak = hasGpsWeak(telemetry, distanceMeters);
+        LinkStats stats = linkStatsByDevice.get(telemetry.getDeviceId());
 
         String distanceText = gpsWeak ? "GPS No Fix" : String.format("%.0fm", distanceMeters);
-        String status = telemetry.getStatusText(System.currentTimeMillis());
+        String status = buildOperationalStatus(telemetry);
+
+        StringBuilder detail = new StringBuilder();
+        if (telemetry.hasRssi()) {
+            detail.append(", RSSI ").append(telemetry.getRssiDbm()).append(" dBm");
+        }
+        if (telemetry.hasSnr()) {
+            detail.append(", SNR ").append(String.format("%.1f", telemetry.getSnrDb())).append(" dB");
+        }
+        if (stats != null && stats.hasPrr()) {
+            detail.append(", PRR ").append(String.format("%.1f%%", stats.getPrrPercent()));
+        }
 
         StringBuilder warning = new StringBuilder();
         if (gpsWeak) {
             warning.append(" (GPS signal weak)");
         }
+        if (telemetry.hasRssi() && telemetry.getRssiDbm() <= -115) {
+            warning.append(" (weak RSSI)");
+        }
+        if (telemetry.hasSnr() && telemetry.getSnrDb() < -7.0d) {
+            warning.append(" (low SNR)");
+        }
+        if (stats != null && stats.hasPrr() && stats.getPrrPercent() < 90.0d) {
+            warning.append(" (low PRR)");
+        }
 
         return guest + " - BPM " + telemetry.getBpm()
                 + ", " + distanceText
+                + detail
                 + ", " + status
                 + warning;
     }
@@ -364,7 +495,83 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
 
     @Override public void onConnected(String portName) { disconnectWarningShown = false; appendEvent(EventEntry.Level.INFO, "Receiver connected on " + portName); updateHeaderStatus(); }
     @Override public void onDisconnected(String reason) { appendEvent(EventEntry.Level.WARNING, "Receiver disconnected: " + reason); updateHeaderStatus(); if (!"user request".equals(reason) && !"window closing".equals(reason) && !"reconnect".equals(reason) && !disconnectWarningShown) { disconnectWarningShown = true; SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Receiver link dropped.\nReason: " + reason, "Disconnected", JOptionPane.WARNING_MESSAGE)); } }
-    @Override public void onTelemetry(DeviceTelemetry telemetry, String rawLine) { lastTelemetryAt = telemetry.getReceivedAt(); DeviceTelemetry prev = devices.get(telemetry.getDeviceId()); if (prev != null) telemetry = new DeviceTelemetry(telemetry.getDeviceId(), telemetry.getLatitude(), telemetry.getLongitude(), telemetry.getEmergency(), telemetry.getFinger(), telemetry.getBpm(), telemetry.getBattery() >= 0 ? telemetry.getBattery() : prev.getBattery(), telemetry.getGuestName().isEmpty() ? prev.getGuestName() : telemetry.getGuestName(), telemetry.getPpgValue(), telemetry.hasRawPpg(), telemetry.getReceivedAt()); devices.put(telemetry.getDeviceId(), telemetry); rememberPpgSample(telemetry); rememberTrackPoint(telemetry); refreshDeviceList(); if (selectedDeviceId < 0 || !devices.containsKey(selectedDeviceId)) selectedDeviceId = telemetry.getDeviceId(); selectDevice(selectedDeviceId, true); mapCanvas.setDevices(devices.values(), selectedDeviceId); mapCanvas.setTrackHistory(trackHistory); ppgMonitorFrame.addTelemetry(telemetry); EventEntry.Level level = classify(telemetry); String message = describe(telemetry); appendTelemetryEvent(telemetry, level, message); updateHeaderStatus(); }
+    @Override
+    public void onTelemetry(DeviceTelemetry telemetry, String rawLine) {
+        lastTelemetryAt = telemetry.getReceivedAt();
+        DeviceTelemetry previous = devices.get(telemetry.getDeviceId());
+        if (previous != null) {
+            telemetry = new DeviceTelemetry(
+                    telemetry.getDeviceId(),
+                    telemetry.getLatitude(),
+                    telemetry.getLongitude(),
+                    telemetry.getEmergency(),
+                    telemetry.getFinger(),
+                    telemetry.getBpm(),
+                    telemetry.getBattery() >= 0 ? telemetry.getBattery() : previous.getBattery(),
+                    telemetry.getGuestName().isEmpty() ? previous.getGuestName() : telemetry.getGuestName(),
+                    telemetry.getPpgValue(),
+                    telemetry.hasRawPpg(),
+                    telemetry.hasRssi() ? telemetry.getRssiDbm() : previous.getRssiDbm(),
+                    telemetry.hasSnr() ? telemetry.getSnrDb() : previous.getSnrDb(),
+                    telemetry.hasSequence() ? telemetry.getSequence() : previous.getSequence(),
+                    telemetry.getReceivedAt()
+            );
+        }
+
+        devices.put(telemetry.getDeviceId(), telemetry);
+        observeLinkStats(telemetry);
+        rememberPpgSample(telemetry);
+        rememberTrackPoint(telemetry);
+        refreshDeviceList();
+        if (selectedDeviceId < 0 || !devices.containsKey(selectedDeviceId)) {
+            selectedDeviceId = telemetry.getDeviceId();
+        }
+        selectDevice(selectedDeviceId, true);
+        mapCanvas.setDevices(devices.values(), selectedDeviceId);
+        mapCanvas.setTrackHistory(trackHistory);
+        ppgMonitorFrame.addTelemetry(telemetry);
+        EventEntry.Level level = classify(telemetry);
+        String message = describe(telemetry);
+        appendTelemetryEvent(telemetry, level, message);
+        updateHeaderStatus();
+    }
     @Override public void onReceiverLocation(ReceiverLocation r, String rawLine) { lastReceiverLocation = r; appendEvent(EventEntry.Level.INFO, "Receiver GPS updated: " + r.getSource()); if (config.isAutoReceiverLocation()) { config.setRefLat(r.getLatitude()); config.setRefLon(r.getLongitude()); refLatField.setText(String.valueOf(r.getLatitude())); refLonField.setText(String.valueOf(r.getLongitude())); mapCanvas.setReferencePoint(r.getLatitude(), r.getLongitude()); persistConfig(); } refreshReceiverReferenceLabel(); }
     @Override public void onMessage(String message) { appendEvent(EventEntry.Level.INFO, message); }
+
+    private static final class LinkStats {
+        private long highestSequence = DeviceTelemetry.UNKNOWN_SEQUENCE;
+        private long receivedPackets;
+        private long lostPackets;
+
+        private void observe(DeviceTelemetry telemetry) {
+            if (!telemetry.hasSequence()) {
+                return;
+            }
+            long sequence = telemetry.getSequence();
+            if (highestSequence == DeviceTelemetry.UNKNOWN_SEQUENCE) {
+                highestSequence = sequence;
+                receivedPackets = 1L;
+                return;
+            }
+            if (sequence > highestSequence) {
+                lostPackets += sequence - highestSequence - 1L;
+                highestSequence = sequence;
+                receivedPackets += 1L;
+            } else if (sequence == highestSequence) {
+                return;
+            }
+        }
+
+        private boolean hasPrr() {
+            return receivedPackets > 0L;
+        }
+
+        private double getPrrPercent() {
+            long total = receivedPackets + lostPackets;
+            if (total <= 0L) {
+                return 0.0d;
+            }
+            return receivedPackets * 100.0d / total;
+        }
+    }
 }

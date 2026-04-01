@@ -1,6 +1,9 @@
 package com.marineguard.station;
 
 public class DeviceTelemetry {
+    public static final int UNKNOWN_RSSI = Integer.MIN_VALUE;
+    public static final long UNKNOWN_SEQUENCE = -1L;
+
     private final int deviceId;
     private final double latitude;
     private final double longitude;
@@ -11,6 +14,9 @@ public class DeviceTelemetry {
     private final String guestName;
     private final int ppgValue;
     private final boolean rawPpgPresent;
+    private final int rssiDbm;
+    private final double snrDb;
+    private final long sequence;
     private final long receivedAt;
 
     public DeviceTelemetry(
@@ -24,6 +30,9 @@ public class DeviceTelemetry {
             String guestName,
             int ppgValue,
             boolean rawPpgPresent,
+            int rssiDbm,
+            double snrDb,
+            long sequence,
             long receivedAt
     ) {
         this.deviceId = deviceId;
@@ -36,6 +45,9 @@ public class DeviceTelemetry {
         this.guestName = guestName == null ? "" : guestName;
         this.ppgValue = ppgValue;
         this.rawPpgPresent = rawPpgPresent;
+        this.rssiDbm = rssiDbm;
+        this.snrDb = snrDb;
+        this.sequence = sequence;
         this.receivedAt = receivedAt;
     }
 
@@ -77,6 +89,30 @@ public class DeviceTelemetry {
 
     public boolean hasRawPpg() {
         return rawPpgPresent;
+    }
+
+    public boolean hasRssi() {
+        return rssiDbm != UNKNOWN_RSSI;
+    }
+
+    public int getRssiDbm() {
+        return rssiDbm;
+    }
+
+    public boolean hasSnr() {
+        return !Double.isNaN(snrDb);
+    }
+
+    public double getSnrDb() {
+        return snrDb;
+    }
+
+    public boolean hasSequence() {
+        return sequence != UNKNOWN_SEQUENCE;
+    }
+
+    public long getSequence() {
+        return sequence;
     }
 
     public long getReceivedAt() {

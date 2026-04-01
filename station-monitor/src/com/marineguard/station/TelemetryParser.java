@@ -66,6 +66,9 @@ public final class TelemetryParser {
             int battery = -1;
             int ppgValue = -1;
             boolean rawPpgPresent = false;
+            int rssiDbm = DeviceTelemetry.UNKNOWN_RSSI;
+            double snrDb = Double.NaN;
+            long sequence = DeviceTelemetry.UNKNOWN_SEQUENCE;
             int unlabeledNumericCount = 0;
 
             for (int i = fields.extraStartIndex; i < parts.length; i++) {
@@ -87,7 +90,29 @@ public final class TelemetryParser {
                     continue;
                 }
 
+                Integer labeledRssi = tryParseLabeledInt(token, "RSSI");
+                if (labeledRssi != null) {
+                    rssiDbm = labeledRssi;
+                    continue;
+                }
+
+                Double labeledSnr = tryParseLabeledDouble(token, "SNR");
+                if (labeledSnr != null) {
+                    snrDb = labeledSnr;
+                    continue;
+                }
+
+                Long labeledSeq = tryParseLabeledLong(token, "SEQ", "SEQUENCE");
+                if (labeledSeq != null) {
+                    sequence = labeledSeq;
+                    continue;
+                }
+
                 if (!isInteger(token)) {
+                    if (Double.isNaN(snrDb) && isLikelySnrValue(token)) {
+                        snrDb = Double.parseDouble(token);
+                        continue;
+                    }
                     if (guestName.isEmpty()) {
                         guestName = token;
                     }
@@ -97,6 +122,12 @@ public final class TelemetryParser {
                 int numeric = Integer.parseInt(token);
                 if (battery < 0 && isLikelyBatteryValue(numeric, unlabeledNumericCount)) {
                     battery = clampBattery(numeric);
+                    unlabeledNumericCount++;
+                } else if (rssiDbm == DeviceTelemetry.UNKNOWN_RSSI && isLikelyRssiValue(numeric)) {
+                    rssiDbm = numeric;
+                    unlabeledNumericCount++;
+                } else if (sequence == DeviceTelemetry.UNKNOWN_SEQUENCE && isLikelySequenceValue(numeric, unlabeledNumericCount)) {
+                    sequence = numeric;
                     unlabeledNumericCount++;
                 } else if (ppgValue < 0 && isLikelyRawPpgValue(numeric)) {
                     ppgValue = numeric;
@@ -121,6 +152,9 @@ public final class TelemetryParser {
                 guestName,
                 ppgValue,
                 rawPpgPresent,
+                rssiDbm,
+                snrDb,
+                sequence,
                 System.currentTimeMillis()
             ));
         } catch (NumberFormatException ex) {
@@ -184,6 +218,44 @@ public final class TelemetryParser {
         return null;
     }
 
+    private static Long tryParseLabeledLong(String token, String... labels) {
+        String upper = token.toUpperCase();
+        for (String label : labels) {
+            if (upper.startsWith(label + "=") || upper.startsWith(label + ":")) {
+                String value = token.substring(label.length() + 1).trim();
+                if (isInteger(value)) {
+                    return Long.parseLong(value);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Double tryParseLabeledDouble(String token, String... labels) {
+        String upper = token.toUpperCase();
+        for (String label : labels) {
+            if (upper.startsWith(label + "=") || upper.startsWith(label + ":")) {
+                String value = token.substring(label.length() + 1).trim();
+                if (isDouble(value)) {
+                    return Double.parseDouble(value);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isDouble(String value) {
+        if (value == null || value.isEmpty()) {
+            return false;
+        }
+        try {
+            Double.parseDouble(value);
+            return true;
+        } catch (NumberFormatException ex) {
+            return false;
+        }
+    }
+
     private static int clampBattery(int value) {
         return Math.max(0, Math.min(100, value));
     }
@@ -228,6 +300,22 @@ public final class TelemetryParser {
 
     private static boolean isLikelyRawPpgValue(int numeric) {
         return numeric > 100;
+    }
+
+    private static boolean isLikelyRssiValue(int numeric) {
+        return numeric <= -20 && numeric >= -160;
+    }
+
+    private static boolean isLikelySnrValue(String token) {
+        if (!isDouble(token)) {
+            return false;
+        }
+        double value = Double.parseDouble(token);
+        return value >= -30.0d && value <= 30.0d;
+    }
+
+    private static boolean isLikelySequenceValue(int numeric, int unlabeledNumericCount) {
+        return unlabeledNumericCount > 0 && numeric >= 0;
     }
 
     private static final class ParsedTelemetryFields {

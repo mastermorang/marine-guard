@@ -19,20 +19,40 @@ public class EventEntry {
     private final String deviceName;
     private final String status;
     private final String relativeLocation;
+    private final String distanceMeters;
     private final String coordinates;
+    private final String rssiDbm;
+    private final String snrDb;
+    private final String prrPercent;
 
     public EventEntry(long timestamp, Level level, String message) {
-        this(timestamp, level, message, "SYSTEM", message, "", "");
+        this(timestamp, level, message, "SYSTEM", message, "", "", "", "", "", "");
     }
 
-    public EventEntry(long timestamp, Level level, String message, String deviceName, String status, String relativeLocation, String coordinates) {
+    public EventEntry(
+            long timestamp,
+            Level level,
+            String message,
+            String deviceName,
+            String status,
+            String relativeLocation,
+            String distanceMeters,
+            String coordinates,
+            String rssiDbm,
+            String snrDb,
+            String prrPercent
+    ) {
         this.timestamp = timestamp;
         this.level = level;
         this.message = message;
         this.deviceName = sanitize(deviceName);
         this.status = sanitize(status);
         this.relativeLocation = sanitize(relativeLocation);
+        this.distanceMeters = sanitize(distanceMeters);
         this.coordinates = sanitize(coordinates);
+        this.rssiDbm = sanitize(rssiDbm);
+        this.snrDb = sanitize(snrDb);
+        this.prrPercent = sanitize(prrPercent);
     }
 
     public long getTimestamp() {
@@ -60,7 +80,11 @@ public class EventEntry {
                 + quote(deviceName) + ","
                 + quote(status) + ","
                 + quote(relativeLocation) + ","
-                + quote(coordinates);
+                + quote(distanceMeters) + ","
+                + quote(coordinates) + ","
+                + quote(rssiDbm) + ","
+                + quote(snrDb) + ","
+                + quote(prrPercent);
     }
 
     private static String sanitize(String value) {

@@ -52,12 +52,22 @@ public class DeviceListCellRenderer extends JPanel implements ListCellRenderer<D
         titleLabel.setText("ID " + value.getDeviceId());
         guestLabel.setText(guest);
         bpmLabel.setText(value.getBpm() > 0 ? value.getBpm() + " BPM" : "--");
-        statusLabel.setText("Status " + value.getStatusText(now));
+        String statusText = value.isStale(now) ? "offline"
+                : value.getBpm() > 120
+                || (value.getBpm() > 0 && value.getBpm() < 40)
+                || value.hasRssi() && value.getRssiDbm() <= -115
+                || value.hasSnr() && value.getSnrDb() < -7.0d
+                ? "warning"
+                : "active";
+        statusLabel.setText("Status " + statusText);
 
         Color panelColor = AppTheme.PANEL;
         if (value.isStale(now)) {
             panelColor = new Color(55, 63, 77);
-        } else if (value.getBpm() > 120 || (value.getBpm() > 0 && value.getBpm() < 40)) {
+        } else if (value.getBpm() > 120
+                || (value.getBpm() > 0 && value.getBpm() < 40)
+                || value.hasRssi() && value.getRssiDbm() <= -115
+                || value.hasSnr() && value.getSnrDb() < -7.0d) {
             panelColor = new Color(99, 66, 14);
         }
 
@@ -68,7 +78,13 @@ public class DeviceListCellRenderer extends JPanel implements ListCellRenderer<D
         setBackground(panelColor);
         titleLabel.setForeground(AppTheme.TEXT);
         guestLabel.setForeground(value.getGuestName().isEmpty() ? AppTheme.DANGER : AppTheme.TEXT_MUTED);
-        bpmLabel.setForeground(value.getBpm() > 120 ? AppTheme.WARNING : value.getBpm() > 0 ? AppTheme.SUCCESS : AppTheme.TEXT_MUTED);
+        bpmLabel.setForeground(
+                value.getBpm() > 120
+                        || value.hasRssi() && value.getRssiDbm() <= -115
+                        || value.hasSnr() && value.getSnrDb() < -7.0d
+                        ? AppTheme.WARNING
+                        : value.getBpm() > 0 ? AppTheme.SUCCESS : AppTheme.TEXT_MUTED
+        );
         statusLabel.setForeground(AppTheme.TEXT);
         assignHintLabel.setForeground(AppTheme.TEXT_MUTED);
         return this;
