@@ -52,22 +52,22 @@ public final class TelemetryParser {
 
         try {
             int deviceId = Integer.parseInt(parts[0].trim());
-            String latToken = parts[1].trim();
-            if (latToken.startsWith("$M")) {
-                latToken = latToken.substring(2);
+            ParsedTelemetryFields fields = extractTelemetryFields(parts);
+            if (fields == null) {
+                return null;
             }
 
-            double latitude = Double.parseDouble(latToken);
-            double longitude = Double.parseDouble(parts[2].trim());
-            int emergency = Integer.parseInt(parts[3].trim());
-            int finger = Integer.parseInt(parts[4].trim());
-            int bpm = Integer.parseInt(parts[5].trim());
+            double latitude = fields.latitude;
+            double longitude = fields.longitude;
+            int emergency = fields.emergency;
+            int finger = fields.finger;
+            int bpm = fields.bpm;
             String guestName = "";
             int battery = -1;
             int ppgValue = -1;
             boolean rawPpgPresent = false;
 
-            for (int i = 6; i < parts.length; i++) {
+            for (int i = fields.extraStartIndex; i < parts.length; i++) {
                 String token = parts[i].trim();
                 if (token.isEmpty()) {
                     continue;
@@ -182,6 +182,40 @@ public final class TelemetryParser {
         return Math.max(0, Math.min(100, value));
     }
 
+    private static ParsedTelemetryFields extractTelemetryFields(String[] parts) {
+        if (parts.length < 6) {
+            return null;
+        }
+        int latIndex = 1;
+        if ("$M".equalsIgnoreCase(parts[1].trim()) || "$R".equalsIgnoreCase(parts[1].trim())) {
+            latIndex = 2;
+        }
+        int lonIndex = latIndex + 1;
+        int emergencyIndex = latIndex + 2;
+        int fingerIndex = latIndex + 3;
+        int bpmIndex = latIndex + 4;
+        if (bpmIndex >= parts.length) {
+            return null;
+        }
+
+        String latToken = parts[latIndex].trim();
+        if (latToken.startsWith("$M") || latToken.startsWith("$R")) {
+            latToken = latToken.substring(2);
+        }
+        if (latToken.isEmpty()) {
+            return null;
+        }
+
+        return new ParsedTelemetryFields(
+                Double.parseDouble(latToken),
+                Double.parseDouble(parts[lonIndex].trim()),
+                Integer.parseInt(parts[emergencyIndex].trim()),
+                Integer.parseInt(parts[fingerIndex].trim()),
+                Integer.parseInt(parts[bpmIndex].trim()),
+                bpmIndex + 1
+        );
+    }
+
     private static boolean isLikelyBatteryValue(int numeric, int currentPpgValue, boolean rawPpgPresent) {
         return !rawPpgPresent && currentPpgValue < 0 && numeric > 0 && numeric <= 100;
     }
@@ -197,5 +231,23 @@ public final class TelemetryParser {
             return true;
         }
         return battery >= 0;
+    }
+
+    private static final class ParsedTelemetryFields {
+        private final double latitude;
+        private final double longitude;
+        private final int emergency;
+        private final int finger;
+        private final int bpm;
+        private final int extraStartIndex;
+
+        private ParsedTelemetryFields(double latitude, double longitude, int emergency, int finger, int bpm, int extraStartIndex) {
+            this.latitude = latitude;
+            this.longitude = longitude;
+            this.emergency = emergency;
+            this.finger = finger;
+            this.bpm = bpm;
+            this.extraStartIndex = extraStartIndex;
+        }
     }
 }

@@ -269,9 +269,49 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private void refreshReceiverReferenceLabel() { receiverRefLabel.setText(referenceText()); }
     private void appendEvent(EventEntry.Level level, String message) { eventEntries.add(new EventEntry(System.currentTimeMillis(), level, message)); while (eventEntries.size() > 500) eventEntries.remove(0); refreshEventLog(); }
     private void refreshEventLog() { StringBuilder b = new StringBuilder(); for (EventEntry e : eventEntries) if (allFilterButton.isSelected() || warningFilterButton.isSelected() && e.getLevel() == EventEntry.Level.WARNING || emergencyFilterButton.isSelected() && e.getLevel() == EventEntry.Level.EMERGENCY) b.append(e.formatLine()).append('\n'); eventLogArea.setText(b.toString()); eventLogArea.setCaretPosition(eventLogArea.getDocument().getLength()); }
-    private EventEntry.Level classify(DeviceTelemetry t) { long now = System.currentTimeMillis(); if (t.getEmergency() > 0) return EventEntry.Level.EMERGENCY; if (t.isStale(now) || t.getFinger() == 0 || t.getBpm() > 120 || t.getBpm() > 0 && t.getBpm() < 40 || t.getBattery() >= 0 && t.getBattery() < 20) return EventEntry.Level.WARNING; return EventEntry.Level.INFO; }
-    private String describe(DeviceTelemetry t) { double[] o = toMetersFromReceiver(t); double d = Math.sqrt(o[0] * o[0] + o[1] * o[1]); String g = t.getGuestName().isEmpty() ? "Unassigned guest" : t.getGuestName(); String battery = t.getBattery() >= 0 ? t.getBattery() + "%" : "n/a"; return g + " - BPM " + t.getBpm() + ", Battery " + battery + ", " + String.format("%.1fm", d) + ", " + t.getStatusText(System.currentTimeMillis()); }
-    private double[] toMetersFromReceiver(DeviceTelemetry t) { double dLat = Math.toRadians(t.getLatitude() - config.getRefLat()), dLon = Math.toRadians(t.getLongitude() - config.getRefLon()), meanLat = Math.toRadians((t.getLatitude() + config.getRefLat()) / 2d), r = 6378137d; return new double[]{dLon * r * Math.cos(meanLat), dLat * r}; }
+    private EventEntry.Level classify(DeviceTelemetry telemetry) {
+        long now = System.currentTimeMillis();
+        double distanceMeters = ReceiverLocation.calculateDistance(config.getRefLat(), config.getRefLon(), telemetry.getLatitude(), telemetry.getLongitude());
+        boolean gpsWeak = !ReceiverLocation.hasGpsFix(config.getRefLat(), config.getRefLon())
+                || !ReceiverLocation.hasGpsFix(telemetry.getLatitude(), telemetry.getLongitude())
+                || distanceMeters > 1000000.0d;
+        if (telemetry.getEmergency() > 0) return EventEntry.Level.EMERGENCY;
+        if (telemetry.isStale(now)
+                || telemetry.getFinger() == 0
+                || telemetry.getBpm() > 120
+                || telemetry.getBpm() > 0 && telemetry.getBpm() < 40
+                || telemetry.getBattery() >= 0 && telemetry.getBattery() < 20
+                || gpsWeak) return EventEntry.Level.WARNING;
+        return EventEntry.Level.INFO;
+    }
+    private String describe(DeviceTelemetry telemetry) {
+        String guest = telemetry.getGuestName().isEmpty() ? "Unassigned guest" : telemetry.getGuestName();
+        double distanceMeters = ReceiverLocation.calculateDistance(config.getRefLat(), config.getRefLon(), telemetry.getLatitude(), telemetry.getLongitude());
+        boolean gpsWeak = !ReceiverLocation.hasGpsFix(config.getRefLat(), config.getRefLon())
+                || !ReceiverLocation.hasGpsFix(telemetry.getLatitude(), telemetry.getLongitude())
+                || distanceMeters > 1000000.0d;
+
+        String distanceText = gpsWeak ? "GPS No Fix" : String.format("%.0fm", distanceMeters);
+        String batteryText = telemetry.getBattery() >= 0 ? telemetry.getBattery() + "%" : "n/a";
+        String status = telemetry.getEmergency() > 0 ? "EMERGENCY" : telemetry.getStatusText(System.currentTimeMillis());
+
+        StringBuilder warning = new StringBuilder();
+        if (gpsWeak) {
+            warning.append(" (GPS signal weak)");
+        }
+        if (telemetry.getBattery() >= 0 && telemetry.getBattery() < 20) {
+            if (warning.length() > 0) {
+                warning.append(' ');
+            }
+            warning.append("LOW BATTERY");
+        }
+
+        return guest + " - BPM " + telemetry.getBpm()
+                + ", Battery " + batteryText
+                + ", " + distanceText
+                + ", " + status
+                + warning;
+    }
     private void persistConfig() { try { config.save(); } catch (IOException ex) { appendEvent(EventEntry.Level.WARNING, "Config save failed: " + ex.getMessage()); } }
     private void styleButton(JButton b) { b.setBackground(AppTheme.PANEL_ALT); b.setForeground(AppTheme.TEXT); b.setFocusPainted(false); }
     private void styleToggle(JToggleButton b) { b.setBackground(AppTheme.PANEL_ALT); b.setForeground(AppTheme.TEXT); b.setFocusPainted(false); }

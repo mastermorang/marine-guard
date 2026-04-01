@@ -80,13 +80,13 @@ public class MapCanvas extends JPanel {
         g2.drawString(String.format("Scale %.0fm", 100d / zoomFactor), width - 125, height - 12);
 
         for (DeviceTelemetry device : devices) {
-            double[] offset = toMeters(device.getLatitude(), device.getLongitude());
+            double[] offset = ReceiverLocation.calculateOffsetMeters(refLat, refLon, device.getLatitude(), device.getLongitude());
             int x = centerX + (int) Math.round(offset[0] * zoomFactor);
             int y = centerY - (int) Math.round(offset[1] * zoomFactor);
 
             boolean selected = device.getDeviceId() == selectedDeviceId;
             Color marker = statusColor(device);
-            double distanceMeters = Math.sqrt(offset[0] * offset[0] + offset[1] * offset[1]);
+            double distanceMeters = ReceiverLocation.calculateDistance(refLat, refLon, device.getLatitude(), device.getLongitude());
 
             g2.setColor(marker);
             g2.fillOval(x - 8, y - 8, 16, 16);
@@ -110,7 +110,7 @@ public class MapCanvas extends JPanel {
             }
             g2.drawString(label, x + 12, y - 10);
             g2.setColor(AppTheme.TEXT_MUTED);
-            g2.drawString(String.format("%.1fm", distanceMeters), x + 12, y + 6);
+            g2.drawString(formatDistance(distanceMeters, device), x + 12, y + 6);
         }
 
         g2.dispose();
@@ -133,14 +133,13 @@ public class MapCanvas extends JPanel {
         return AppTheme.SUCCESS;
     }
 
-    private double[] toMeters(double lat, double lon) {
-        double dLat = Math.toRadians(lat - refLat);
-        double dLon = Math.toRadians(lon - refLon);
-        double meanLat = Math.toRadians((lat + refLat) / 2.0d);
-        double earthRadius = 6378137.0d;
-        double x = dLon * earthRadius * Math.cos(meanLat);
-        double y = dLat * earthRadius;
-        return new double[]{x, y};
+    private String formatDistance(double distanceMeters, DeviceTelemetry device) {
+        if (!ReceiverLocation.hasGpsFix(device.getLatitude(), device.getLongitude())
+                || !ReceiverLocation.hasGpsFix(refLat, refLon)
+                || distanceMeters > 1000000.0d) {
+            return "GPS No Fix";
+        }
+        return String.format("%.0fm", distanceMeters);
     }
 
     private final class ZoomListener implements MouseWheelListener {
