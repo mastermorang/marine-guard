@@ -29,9 +29,13 @@ public class VitalsGaugePanel extends JPanel {
 
         int width = getWidth();
         int height = getHeight();
-        int size = Math.min(width, height) - 30;
+        int topPadding = 18;
+        int bottomPadding = 54;
+        int sidePadding = 22;
+        int size = Math.min(width - sidePadding * 2, height - topPadding - bottomPadding);
+        size = Math.max(90, size);
         int x = (width - size) / 2;
-        int y = 18;
+        int y = topPadding;
 
         g2.setStroke(new BasicStroke(16f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         g2.setColor(new Color(52, 67, 88));
@@ -57,7 +61,8 @@ public class VitalsGaugePanel extends JPanel {
         g2.setFont(getFont().deriveFont(Font.PLAIN, 12f));
         String label = telemetry == null ? "No signal" : telemetry.getStatusText(System.currentTimeMillis());
         int labelWidth = g2.getFontMetrics().stringWidth(label);
-        g2.drawString(label, width / 2 - labelWidth / 2, y + size + 18);
+        int labelY = Math.min(height - 14, y + size + 26);
+        g2.drawString(label, width / 2 - labelWidth / 2, labelY);
         g2.dispose();
     }
 

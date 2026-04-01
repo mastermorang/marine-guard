@@ -11,6 +11,7 @@ public class EventEntry {
     }
 
     private static final SimpleDateFormat FORMAT = new SimpleDateFormat("HH:mm:ss");
+    private static final SimpleDateFormat CSV_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
     private final long timestamp;
     private final Level level;
@@ -36,5 +37,9 @@ public class EventEntry {
 
     public String formatLine() {
         return "[" + FORMAT.format(new Date(timestamp)) + "] " + message;
+    }
+
+    public String formatCsvTimestamp() {
+        return CSV_FORMAT.format(new Date(timestamp));
     }
 }

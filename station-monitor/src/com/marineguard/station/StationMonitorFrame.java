@@ -194,7 +194,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(chooser.getSelectedFile()))) {
             writer.write("timestamp,level,message"); writer.newLine();
-            for (EventEntry entry : eventEntries) { writer.write(entry.getTimestamp() + "," + entry.getLevel() + ",\"" + entry.getMessage().replace("\"", "\"\"") + "\""); writer.newLine(); }
+            for (EventEntry entry : eventEntries) { writer.write("\"" + entry.formatCsvTimestamp() + "\"," + entry.getLevel() + ",\"" + entry.getMessage().replace("\"", "\"\"") + "\""); writer.newLine(); }
             appendEvent(EventEntry.Level.INFO, "Event log exported: " + chooser.getSelectedFile().getAbsolutePath());
         } catch (IOException ex) { JOptionPane.showMessageDialog(this, "Export failed: " + ex.getMessage(), "Export", JOptionPane.ERROR_MESSAGE); }
     }

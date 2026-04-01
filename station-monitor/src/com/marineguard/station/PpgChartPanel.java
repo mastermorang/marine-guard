@@ -34,8 +34,8 @@ public class PpgChartPanel extends JPanel {
         int height = getHeight();
         int left = 52;
         int right = 18;
-        int top = 20;
-        int bottom = 30;
+        int top = 28;
+        int bottom = 34;
         int plotWidth = Math.max(1, width - left - right);
         int plotHeight = Math.max(1, height - top - bottom);
 
@@ -47,7 +47,8 @@ public class PpgChartPanel extends JPanel {
 
         g2.setColor(AppTheme.TEXT_MUTED);
         g2.setFont(getFont().deriveFont(Font.PLAIN, 11f));
-        g2.drawString(showPpg ? "PPG raw" : "BPM", 12, 18);
+        g2.drawString(showPpg ? "PPG raw" : "BPM", 12, 16);
+        g2.drawString("60s", 54, 16);
 
         if (samples.size() < 2) {
             g2.setColor(AppTheme.TEXT_MUTED);
