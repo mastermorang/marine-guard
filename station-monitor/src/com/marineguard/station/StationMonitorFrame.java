@@ -26,7 +26,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private final JList<DeviceTelemetry> deviceList = new JList<DeviceTelemetry>(deviceListModel);
     private final JTextArea eventLogArea = new JTextArea();
     private final JLabel statusLabel = new JLabel("Receiver waiting for data");
-    private final JLabel summaryLabel = new JLabel("0 devices online | Avg battery n/a");
+    private final JLabel summaryLabel = new JLabel("0 devices online");
     private final JButton connectButton = new JButton("Connect");
     private final JButton disconnectButton = new JButton("Disconnect");
     private final JButton exportButton = new JButton("Export CSV");
@@ -219,10 +219,9 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private int severityScore(DeviceTelemetry t) {
         long now = System.currentTimeMillis();
         if (t.getEmergency() > 0) return 5;
-        if (t.getBattery() >= 0 && t.getBattery() < 20) return 4;
-        if (t.getBpm() > 120 || (t.getBpm() > 0 && t.getBpm() < 40)) return 3;
-        if (t.getFinger() == 0) return 2;
-        if (t.isStale(now)) return 1;
+        if (t.getBpm() > 120 || (t.getBpm() > 0 && t.getBpm() < 40)) return 4;
+        if (t.getFinger() == 0) return 3;
+        if (t.isStale(now)) return 2;
         return 0;
     }
 
@@ -242,7 +241,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         if (selected == null) { selectedTitleLabel.setText("No device selected"); selectedGuestLabel.setText("-"); selectedMetaLabel.setText("-"); ppgSummaryLabel.setText("min -- / max -- / avg --"); receiverRefLabel.setText(referenceText()); vitalsGauge.setTelemetry(null); ppgChart.setSamples(new ArrayList<PpgSample>(), false); return; }
         selectedTitleLabel.setText("Device D" + selected.getDeviceId());
         selectedGuestLabel.setText(selected.getGuestName().isEmpty() ? "(unassigned)" : selected.getGuestName());
-        selectedMetaLabel.setText("BPM " + selected.getBpm() + " | Battery " + (selected.getBattery() >= 0 ? selected.getBattery() + "%" : "n/a") + " | " + selected.getStatusText(System.currentTimeMillis()));
+        selectedMetaLabel.setText("BPM " + selected.getBpm() + " | " + selected.getStatusText(System.currentTimeMillis()));
         receiverRefLabel.setText(referenceText()); vitalsGauge.setTelemetry(selected);
         List<PpgSample> samples = samplesForDevice(selectedDeviceId); boolean raw = hasRawPpg(samples); ppgChart.setSamples(samples, raw); ppgSummaryLabel.setText(buildPpgSummary(samples, raw));
     }
@@ -258,12 +257,12 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     }
 
     private void updateHeaderStatus() {
-        boolean connected = serialService.isConnected(); long now = System.currentTimeMillis(); int online = 0; int batteryCount = 0; long batterySum = 0L;
-        for (DeviceTelemetry d : devices.values()) { if (!d.isStale(now)) online++; if (d.getBattery() >= 0) { batteryCount++; batterySum += d.getBattery(); } }
+        boolean connected = serialService.isConnected(); long now = System.currentTimeMillis(); int online = 0;
+        for (DeviceTelemetry d : devices.values()) { if (!d.isStale(now)) online++; }
         if (connected && now - lastTelemetryAt <= 15000L) { statusLabel.setForeground(AppTheme.SUCCESS); statusLabel.setText("CONNECTED " + serialService.getConnectedPortName()); }
         else if (connected) { statusLabel.setForeground(AppTheme.WARNING); statusLabel.setText("CONNECTED " + serialService.getConnectedPortName() + " | waiting"); }
         else { statusLabel.setForeground(AppTheme.DANGER); statusLabel.setText("DISCONNECTED"); }
-        summaryLabel.setText(online + " devices online | Avg battery " + (batteryCount == 0 ? "n/a" : (batterySum / batteryCount) + "%")); connectButton.setEnabled(!connected); disconnectButton.setEnabled(connected);
+        summaryLabel.setText(online + " devices online"); connectButton.setEnabled(!connected); disconnectButton.setEnabled(connected);
     }
 
     private void refreshReceiverReferenceLabel() { receiverRefLabel.setText(referenceText()); }
@@ -280,7 +279,6 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
                 || telemetry.getFinger() == 0
                 || telemetry.getBpm() > 120
                 || telemetry.getBpm() > 0 && telemetry.getBpm() < 40
-                || telemetry.getBattery() >= 0 && telemetry.getBattery() < 20
                 || gpsWeak) return EventEntry.Level.WARNING;
         return EventEntry.Level.INFO;
     }
@@ -292,22 +290,14 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
                 || distanceMeters > 1000000.0d;
 
         String distanceText = gpsWeak ? "GPS No Fix" : String.format("%.0fm", distanceMeters);
-        String batteryText = telemetry.getBattery() >= 0 ? telemetry.getBattery() + "%" : "n/a";
         String status = telemetry.getEmergency() > 0 ? "EMERGENCY" : telemetry.getStatusText(System.currentTimeMillis());
 
         StringBuilder warning = new StringBuilder();
         if (gpsWeak) {
             warning.append(" (GPS signal weak)");
         }
-        if (telemetry.getBattery() >= 0 && telemetry.getBattery() < 20) {
-            if (warning.length() > 0) {
-                warning.append(' ');
-            }
-            warning.append("LOW BATTERY");
-        }
 
         return guest + " - BPM " + telemetry.getBpm()
-                + ", Battery " + batteryText
                 + ", " + distanceText
                 + ", " + status
                 + warning;

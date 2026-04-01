@@ -23,7 +23,7 @@ It is intended to replace the browser-first workflow for field operation.
 
 The current field UI is organized as:
 
-- Top status bar with receiver state, online count, average battery, and quick actions
+- Top status bar with receiver state, online count, and quick actions
 - Left device sidebar with card-based device list
 - Center large relative map with zoom and pan
 - Right sidebar for selected device, vitals gauge, and PPG panels
@@ -71,7 +71,7 @@ Fields:
 4. Emergency flag
 5. Finger/contact flag
 6. BPM
-7. Battery percent (optional)
+7. Battery percent (optional, currently not shown in UI)
 8. Guest name (optional)
 9. PPG raw value (optional)
 
@@ -96,7 +96,7 @@ The main station window now includes:
 
 - an embedded live PPG/BPM preview panel for the selected device
 - a `PPG Monitor` button for a larger dedicated graph window
-- color-coded device rows for battery, BPM, emergency, stale, and no-contact states
+- color-coded device rows for BPM, emergency, stale, and no-contact states
 - a guest assignment action for the selected device
 - receiver-centered relative map labels with live distance and mouse-wheel zoom
 
