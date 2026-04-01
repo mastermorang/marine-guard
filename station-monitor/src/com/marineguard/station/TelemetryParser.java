@@ -66,6 +66,7 @@ public final class TelemetryParser {
             int battery = -1;
             int ppgValue = -1;
             boolean rawPpgPresent = false;
+            int unlabeledNumericCount = 0;
 
             for (int i = fields.extraStartIndex; i < parts.length; i++) {
                 String token = parts[i].trim();
@@ -94,11 +95,16 @@ public final class TelemetryParser {
                 }
 
                 int numeric = Integer.parseInt(token);
-                if (battery < 0 && isLikelyBatteryValue(numeric, ppgValue, rawPpgPresent)) {
-                    battery = numeric;
-                } else if (ppgValue < 0 && isLikelyRawPpgValue(numeric, battery, rawPpgPresent)) {
+                if (battery < 0 && isLikelyBatteryValue(numeric, unlabeledNumericCount)) {
+                    battery = clampBattery(numeric);
+                    unlabeledNumericCount++;
+                } else if (ppgValue < 0 && isLikelyRawPpgValue(numeric)) {
                     ppgValue = numeric;
                     rawPpgPresent = true;
+                    unlabeledNumericCount++;
+                } else if (battery < 0 && numeric >= 0 && numeric <= 100) {
+                    battery = clampBattery(numeric);
+                    unlabeledNumericCount++;
                 } else if (guestName.isEmpty()) {
                     guestName = token;
                 }
@@ -216,21 +222,12 @@ public final class TelemetryParser {
         );
     }
 
-    private static boolean isLikelyBatteryValue(int numeric, int currentPpgValue, boolean rawPpgPresent) {
-        return !rawPpgPresent && currentPpgValue < 0 && numeric > 0 && numeric <= 100;
+    private static boolean isLikelyBatteryValue(int numeric, int unlabeledNumericCount) {
+        return unlabeledNumericCount == 0 && numeric >= 0 && numeric <= 100;
     }
 
-    private static boolean isLikelyRawPpgValue(int numeric, int battery, boolean rawPpgPresent) {
-        if (rawPpgPresent) {
-            return false;
-        }
-        if (numeric <= 1) {
-            return false;
-        }
-        if (numeric > 100) {
-            return true;
-        }
-        return battery >= 0;
+    private static boolean isLikelyRawPpgValue(int numeric) {
+        return numeric > 100;
     }
 
     private static final class ParsedTelemetryFields {
