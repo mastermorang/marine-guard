@@ -29,6 +29,8 @@ import java.awt.Font;
 import java.awt.GridLayout;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -113,6 +115,9 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         mainPanel.setOpaque(false);
 
         deviceTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        deviceTable.setRowSelectionAllowed(true);
+        deviceTable.setColumnSelectionAllowed(false);
+        deviceTable.setCellSelectionEnabled(false);
         deviceTable.setRowHeight(28);
         JScrollPane tableScroll = new JScrollPane(deviceTable);
         tableScroll.setBorder(BorderFactory.createTitledBorder("Devices"));
@@ -258,19 +263,14 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
             if (event.getValueIsAdjusting()) {
                 return;
             }
-            int row = deviceTable.getSelectedRow();
-            if (row < 0) {
-                return;
+            syncSelectionFromTable();
+        });
+
+        deviceTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent event) {
+                syncSelectionFromTable();
             }
-            DeviceTelemetry device = tableModel.getDeviceAt(row);
-            if (device == null) {
-                return;
-            }
-            selectedDeviceId = device.getDeviceId();
-            refreshDetailPanel();
-            refreshMap();
-            refreshPpgPreview();
-            ppgMonitorFrame.setSelectedDevice(device);
         });
 
         locationModeComboBox.addActionListener(event -> {
@@ -453,6 +453,34 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         }
     }
 
+    private void syncSelectionFromTable() {
+        int row = deviceTable.getSelectedRow();
+        if (row < 0) {
+            return;
+        }
+        DeviceTelemetry device = tableModel.getDeviceAt(row);
+        if (device == null) {
+            return;
+        }
+        selectDevice(device.getDeviceId(), false);
+    }
+
+    private void selectDevice(int deviceId, boolean updateTableSelection) {
+        DeviceTelemetry device = devices.get(deviceId);
+        if (device == null) {
+            return;
+        }
+
+        selectedDeviceId = deviceId;
+        if (updateTableSelection) {
+            restoreSelectedDeviceRow();
+        }
+        refreshDetailPanel();
+        refreshMap();
+        refreshPpgPreview();
+        ppgMonitorFrame.setSelectedDevice(device);
+    }
+
     private void restoreSelectedDeviceRow() {
         if (selectedDeviceId < 0) {
             return;
@@ -460,7 +488,9 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         for (int row = 0; row < tableModel.getRowCount(); row++) {
             DeviceTelemetry device = tableModel.getDeviceAt(row);
             if (device != null && device.getDeviceId() == selectedDeviceId) {
-                deviceTable.getSelectionModel().setSelectionInterval(row, row);
+                if (deviceTable.getSelectedRow() != row) {
+                    deviceTable.getSelectionModel().setSelectionInterval(row, row);
+                }
                 deviceTable.scrollRectToVisible(deviceTable.getCellRect(row, 0, true));
                 return;
             }
@@ -586,15 +616,11 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         appendLog("RX " + rawLine);
         ppgMonitorFrame.addTelemetry(telemetry);
 
-        if (selectedDeviceId == -1) {
+        if (selectedDeviceId == -1 || !devices.containsKey(selectedDeviceId)) {
             selectedDeviceId = telemetry.getDeviceId();
-            deviceTable.getSelectionModel().setSelectionInterval(0, 0);
         }
 
-        refreshDetailPanel();
-        refreshMap();
-        refreshPpgPreview();
-        ppgMonitorFrame.setSelectedDevice(devices.get(selectedDeviceId));
+        selectDevice(selectedDeviceId, true);
         refreshConnectionStatus();
     }
 

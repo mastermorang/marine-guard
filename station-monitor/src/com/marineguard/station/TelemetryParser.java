@@ -92,7 +92,7 @@ public final class TelemetryParser {
                 }
 
                 int numeric = Integer.parseInt(token);
-                if (battery < 0 && numeric >= 0 && numeric <= 100) {
+                if (battery < 0 && numeric > 0 && numeric <= 100) {
                     battery = numeric;
                 } else if (ppgValue < 0) {
                     ppgValue = numeric;
