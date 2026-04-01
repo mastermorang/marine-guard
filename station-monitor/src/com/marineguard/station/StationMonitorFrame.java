@@ -113,21 +113,21 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         JLabel mapHelp = new JLabel("Wheel: zoom  |  Drag: pan  |  Receiver stays at center"); mapHelp.setForeground(AppTheme.TEXT_MUTED); mapHelp.setHorizontalAlignment(SwingConstants.RIGHT);
         center.add(mapCanvas, BorderLayout.CENTER); center.add(mapHelp, BorderLayout.SOUTH);
 
-        JPanel right = new JPanel(new BorderLayout(10, 10)); right.setOpaque(false); right.setPreferredSize(new Dimension(360, 0));
+        JPanel right = new JPanel(new BorderLayout(10, 10)); right.setOpaque(false); right.setPreferredSize(new Dimension(420, 0));
         JPanel selected = new JPanel(new GridLayout(4, 1, 6, 6)); AppTheme.styleCard(selected); selected.setBorder(AppTheme.sectionBorder("Selected Device"));
         styleInfo(selectedTitleLabel, 22f, true); styleInfo(selectedGuestLabel, 18f, false); styleInfo(selectedMetaLabel, 14f, false); styleInfo(receiverRefLabel, 13f, false);
         selected.add(selectedTitleLabel); selected.add(selectedGuestLabel); selected.add(selectedMetaLabel); selected.add(receiverRefLabel);
         JPanel vitals = new JPanel(new BorderLayout()); vitals.setBorder(AppTheme.sectionBorder("Vitals")); vitals.setBackground(AppTheme.PANEL); vitals.add(vitalsGauge, BorderLayout.CENTER);
-        JPanel ppg = new JPanel(new BorderLayout()); ppg.setBorder(AppTheme.sectionBorder("PPG Waveform")); ppg.setBackground(AppTheme.PANEL); ppg.add(ppgChart, BorderLayout.CENTER);
-        JPanel summary = new JPanel(new BorderLayout()); summary.setBorder(AppTheme.sectionBorder("PPG Summary")); summary.setBackground(AppTheme.PANEL); styleInfo(ppgSummaryLabel, 16f, false); summary.add(ppgSummaryLabel, BorderLayout.CENTER);
-        JPanel rightBottom = new JPanel(new GridLayout(2, 1, 10, 10)); rightBottom.setOpaque(false); rightBottom.add(ppg); rightBottom.add(summary);
+        JPanel ppg = new JPanel(new BorderLayout()); ppg.setBorder(AppTheme.sectionBorder("PPG Waveform")); ppg.setBackground(AppTheme.PANEL); ppg.setPreferredSize(new Dimension(0, 220)); ppg.add(ppgChart, BorderLayout.CENTER);
+        JPanel summary = new JPanel(new BorderLayout()); summary.setBorder(AppTheme.sectionBorder("PPG Summary")); summary.setBackground(AppTheme.PANEL); summary.setPreferredSize(new Dimension(0, 90)); styleInfo(ppgSummaryLabel, 16f, false); summary.add(ppgSummaryLabel, BorderLayout.CENTER);
+        JPanel rightBottom = new JPanel(new BorderLayout(10, 10)); rightBottom.setOpaque(false); rightBottom.add(ppg, BorderLayout.CENTER); rightBottom.add(summary, BorderLayout.SOUTH);
         right.add(selected, BorderLayout.NORTH); right.add(vitals, BorderLayout.CENTER); right.add(rightBottom, BorderLayout.SOUTH);
 
         body.add(left, BorderLayout.WEST); body.add(center, BorderLayout.CENTER); body.add(right, BorderLayout.EAST); return body;
     }
 
     private JPanel createBottomLogPanel() {
-        JPanel panel = new JPanel(new BorderLayout(8, 8)); panel.setBackground(AppTheme.PANEL); panel.setBorder(AppTheme.sectionBorder("Event Log")); panel.setPreferredSize(new Dimension(0, 220));
+        JPanel panel = new JPanel(new BorderLayout(8, 8)); panel.setBackground(AppTheme.PANEL); panel.setBorder(AppTheme.sectionBorder("Event Log")); panel.setPreferredSize(new Dimension(0, 150));
         eventLogArea.setEditable(false); eventLogArea.setLineWrap(true); eventLogArea.setWrapStyleWord(true); eventLogArea.setBackground(AppTheme.PANEL_ALT); eventLogArea.setForeground(AppTheme.TEXT); eventLogArea.setCaretColor(AppTheme.TEXT);
         JScrollPane logScroll = new JScrollPane(eventLogArea); logScroll.setBorder(null); logScroll.getViewport().setBackground(AppTheme.PANEL_ALT);
         ButtonGroup group = new ButtonGroup(); group.add(allFilterButton); group.add(warningFilterButton); group.add(emergencyFilterButton); styleToggle(allFilterButton); styleToggle(warningFilterButton); styleToggle(emergencyFilterButton);
