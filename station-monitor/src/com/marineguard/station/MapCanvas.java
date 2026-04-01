@@ -1,12 +1,15 @@
 package com.marineguard.station;
 
 import javax.swing.JPanel;
+import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.event.MouseWheelEvent;
+import java.awt.event.MouseWheelListener;
 import java.util.Collection;
 
 public class MapCanvas extends JPanel {
@@ -14,12 +17,14 @@ public class MapCanvas extends JPanel {
     private double refLon;
     private Collection<DeviceTelemetry> devices;
     private int selectedDeviceId = -1;
+    private double zoomFactor = 1.8d;
 
     public MapCanvas(double refLat, double refLon) {
         this.refLat = refLat;
         this.refLon = refLon;
         this.devices = java.util.Collections.emptyList();
-        setBackground(new Color(243, 247, 252));
+        setBackground(AppTheme.PANEL);
+        addMouseWheelListener(new ZoomListener());
     }
 
     public void setReferencePoint(double refLat, double refLon) {
@@ -46,7 +51,7 @@ public class MapCanvas extends JPanel {
         int centerX = width / 2;
         int centerY = height / 2;
 
-        g2.setColor(new Color(227, 235, 244));
+        g2.setColor(AppTheme.GRID);
         for (int x = padding; x < width; x += 80) {
             g2.drawLine(x, padding, x, height - padding);
         }
@@ -54,39 +59,68 @@ public class MapCanvas extends JPanel {
             g2.drawLine(padding, y, width - padding, y);
         }
 
-        g2.setColor(new Color(24, 69, 114));
-        g2.fillOval(centerX - 7, centerY - 7, 14, 14);
+        g2.setColor(AppTheme.ACCENT);
+        g2.fillOval(centerX - 8, centerY - 8, 16, 16);
         g2.setFont(getFont().deriveFont(Font.BOLD, 13f));
+        g2.setColor(AppTheme.TEXT);
         g2.drawString("Receiver", centerX + 10, centerY - 10);
 
-        g2.setColor(new Color(110, 136, 163));
+        g2.setColor(AppTheme.TEXT_MUTED);
         g2.drawString(String.format("Ref %.6f, %.6f", refLat, refLon), padding, height - 12);
+        g2.drawString(String.format("Zoom x%.1f", zoomFactor / 1.8d), width - 105, height - 12);
 
         for (DeviceTelemetry device : devices) {
             double[] offset = toMeters(device.getLatitude(), device.getLongitude());
-            int x = centerX + (int) Math.round(offset[0] * 1.8d);
-            int y = centerY - (int) Math.round(offset[1] * 1.8d);
+            int x = centerX + (int) Math.round(offset[0] * zoomFactor);
+            int y = centerY - (int) Math.round(offset[1] * zoomFactor);
 
             boolean selected = device.getDeviceId() == selectedDeviceId;
-            Color marker = device.getEmergency() > 0 ? new Color(220, 53, 69) : new Color(22, 163, 74);
+            Color marker = statusColor(device);
+            double distanceMeters = Math.sqrt(offset[0] * offset[0] + offset[1] * offset[1]);
 
             g2.setColor(marker);
             g2.fillOval(x - 8, y - 8, 16, 16);
+            if (device.getEmergency() > 0) {
+                float pulse = 18f + (System.currentTimeMillis() % 1200L) / 1200f * 10f;
+                g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.5f));
+                g2.setStroke(new BasicStroke(2f));
+                g2.drawOval((int) (x - pulse / 2), (int) (y - pulse / 2), (int) pulse, (int) pulse);
+                g2.setComposite(AlphaComposite.SrcOver);
+            }
             if (selected) {
-                g2.setColor(new Color(255, 184, 0));
+                g2.setColor(AppTheme.SELECTED);
                 g2.setStroke(new BasicStroke(2.2f));
                 g2.drawOval(x - 13, y - 13, 26, 26);
             }
 
-            g2.setColor(new Color(15, 23, 42));
+            g2.setColor(AppTheme.TEXT);
             String label = "D" + device.getDeviceId();
             if (!device.getGuestName().isEmpty()) {
                 label += " " + device.getGuestName();
             }
-            g2.drawString(label, x + 10, y - 10);
+            g2.drawString(label, x + 12, y - 10);
+            g2.setColor(AppTheme.TEXT_MUTED);
+            g2.drawString(String.format("%.1fm", distanceMeters), x + 12, y + 6);
         }
 
         g2.dispose();
+    }
+
+    private Color statusColor(DeviceTelemetry device) {
+        long now = System.currentTimeMillis();
+        if (device.getEmergency() > 0) {
+            return AppTheme.DANGER;
+        }
+        if (device.isStale(now)) {
+            return AppTheme.OFFLINE;
+        }
+        if (device.getBpm() > 120 || (device.getBpm() > 0 && device.getBpm() < 40)) {
+            return AppTheme.WARNING;
+        }
+        if (device.getFinger() == 0) {
+            return new Color(156, 163, 175);
+        }
+        return AppTheme.SUCCESS;
     }
 
     private double[] toMeters(double lat, double lon) {
@@ -97,5 +131,14 @@ public class MapCanvas extends JPanel {
         double x = dLon * earthRadius * Math.cos(meanLat);
         double y = dLat * earthRadius;
         return new double[]{x, y};
+    }
+
+    private final class ZoomListener implements MouseWheelListener {
+        @Override
+        public void mouseWheelMoved(MouseWheelEvent event) {
+            double next = zoomFactor * (event.getWheelRotation() > 0 ? 0.9d : 1.1d);
+            zoomFactor = Math.max(0.6d, Math.min(8.5d, next));
+            repaint();
+        }
     }
 }

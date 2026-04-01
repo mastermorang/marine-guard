@@ -15,7 +15,7 @@ public class PpgChartPanel extends JPanel {
     private boolean showPpg;
 
     public PpgChartPanel() {
-        setBackground(Color.WHITE);
+        setBackground(AppTheme.PANEL);
     }
 
     public void setSamples(List<PpgSample> samples, boolean showPpg) {
@@ -39,18 +39,18 @@ public class PpgChartPanel extends JPanel {
         int plotWidth = Math.max(1, width - left - right);
         int plotHeight = Math.max(1, height - top - bottom);
 
-        g2.setColor(new Color(241, 245, 249));
+        g2.setColor(AppTheme.GRID);
         for (int i = 0; i <= 4; i++) {
             int y = top + (plotHeight * i / 4);
             g2.drawLine(left, y, width - right, y);
         }
 
-        g2.setColor(new Color(148, 163, 184));
+        g2.setColor(AppTheme.TEXT_MUTED);
         g2.setFont(getFont().deriveFont(Font.PLAIN, 11f));
         g2.drawString(showPpg ? "PPG raw" : "BPM", 12, 18);
 
         if (samples.size() < 2) {
-            g2.setColor(new Color(100, 116, 139));
+            g2.setColor(AppTheme.TEXT_MUTED);
             g2.drawString("Waiting for enough samples...", left, top + plotHeight / 2);
             g2.dispose();
             return;
@@ -72,7 +72,7 @@ public class PpgChartPanel extends JPanel {
         long lastTs = samples.get(samples.size() - 1).getTimestamp();
         long span = Math.max(1L, lastTs - firstTs);
 
-        g2.setColor(showPpg ? new Color(37, 99, 235) : new Color(220, 38, 38));
+        g2.setColor(showPpg ? AppTheme.ACCENT : AppTheme.WARNING);
         g2.setStroke(new BasicStroke(2.2f));
 
         int prevX = -1;
@@ -88,7 +88,7 @@ public class PpgChartPanel extends JPanel {
             prevY = y;
         }
 
-        g2.setColor(new Color(71, 85, 105));
+        g2.setColor(AppTheme.TEXT_MUTED);
         g2.drawString(String.valueOf(max), 12, top + 4);
         g2.drawString(String.valueOf(min), 12, top + plotHeight);
         g2.drawString("-60s", left, height - 10);

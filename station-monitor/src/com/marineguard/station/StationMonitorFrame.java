@@ -57,6 +57,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private final JButton connectButton = new JButton("Connect");
     private final JButton disconnectButton = new JButton("Disconnect");
     private final JButton ppgMonitorButton = new JButton("PPG Monitor");
+    private final JButton assignGuestButton = new JButton("Assign Guest");
     private final JTable deviceTable = new JTable(tableModel);
     private final JTextArea logArea = new JTextArea();
     private final JLabel detailTitle = new JLabel("No device selected");
@@ -97,11 +98,11 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         setMinimumSize(new Dimension(1360, 860));
         getContentPane().setLayout(new BorderLayout(12, 12));
-        getContentPane().setBackground(new Color(241, 245, 249));
+        getContentPane().setBackground(AppTheme.BG);
 
         bannerLabel.setOpaque(true);
-        bannerLabel.setBackground(new Color(230, 238, 247));
-        bannerLabel.setForeground(new Color(18, 52, 86));
+        bannerLabel.setBackground(AppTheme.PANEL_ALT);
+        bannerLabel.setForeground(AppTheme.TEXT);
         bannerLabel.setBorder(BorderFactory.createEmptyBorder(14, 18, 14, 18));
         bannerLabel.setFont(bannerLabel.getFont().deriveFont(Font.BOLD, 18f));
         getContentPane().add(bannerLabel, BorderLayout.NORTH);
@@ -119,8 +120,15 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         deviceTable.setColumnSelectionAllowed(false);
         deviceTable.setCellSelectionEnabled(false);
         deviceTable.setRowHeight(28);
+        deviceTable.setDefaultRenderer(Object.class, new DeviceTableCellRenderer());
+        deviceTable.setBackground(AppTheme.PANEL);
+        deviceTable.setForeground(AppTheme.TEXT);
+        deviceTable.setGridColor(AppTheme.GRID);
+        deviceTable.getTableHeader().setBackground(AppTheme.PANEL_ALT);
+        deviceTable.getTableHeader().setForeground(AppTheme.TEXT);
         JScrollPane tableScroll = new JScrollPane(deviceTable);
         tableScroll.setBorder(BorderFactory.createTitledBorder("Devices"));
+        tableScroll.getViewport().setBackground(AppTheme.BG);
 
         JPanel rightPanel = new JPanel(new BorderLayout(12, 12));
         rightPanel.setOpaque(false);
@@ -141,6 +149,9 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         JScrollPane logScroll = new JScrollPane(logArea);
         logScroll.setPreferredSize(new Dimension(720, 170));
         logScroll.setBorder(BorderFactory.createTitledBorder("Event log"));
+        logArea.setBackground(AppTheme.PANEL);
+        logArea.setForeground(AppTheme.TEXT);
+        logArea.setCaretColor(AppTheme.TEXT);
         rightPanel.add(logScroll, BorderLayout.SOUTH);
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, tableScroll, rightPanel);
@@ -185,14 +196,11 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
 
     private JPanel createStatCard(String title, Component body) {
         JPanel card = new JPanel(new BorderLayout(6, 6));
-        card.setBackground(Color.WHITE);
-        card.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(221, 229, 239)),
-                BorderFactory.createEmptyBorder(14, 14, 14, 14)
-        ));
+        AppTheme.styleCard(card);
 
         JLabel titleLabel = new JLabel(title);
-        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 14f));
+        AppTheme.styleTitle(titleLabel);
+        AppTheme.styleValue(body);
         card.add(titleLabel, BorderLayout.NORTH);
         card.add(body, BorderLayout.CENTER);
         return card;
@@ -240,10 +248,13 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         disconnectButton.addActionListener(event -> disconnect("user request"));
         disconnectButton.setEnabled(false);
         ppgMonitorButton.addActionListener(event -> openPpgMonitor());
+        assignGuestButton.addActionListener(event -> assignGuestToSelectedDevice());
         controls.add(connectButton);
         controls.add(disconnectButton);
         controls.add(ppgMonitorButton);
+        controls.add(assignGuestButton);
 
+        footerStatusLabel.setForeground(AppTheme.TEXT);
         footerStatusLabel.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
 
         container.add(controls, BorderLayout.CENTER);
@@ -256,6 +267,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         refLonField.setText(String.valueOf(config.getRefLon()));
         baudComboBox.setSelectedItem(String.valueOf(config.getBaudRate()));
         locationModeComboBox.setSelectedIndex(config.isAutoReceiverLocation() ? 1 : 0);
+        applyControlTheme();
     }
 
     private void attachListeners() {
@@ -378,19 +390,19 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
 
         if (serialService.isConnected() && recentData) {
             disconnectWarningShown = false;
-            bannerLabel.setText("Receiver connected: " + serialService.getConnectedPortName() + " / live telemetry");
-            bannerLabel.setBackground(new Color(220, 252, 231));
-            bannerLabel.setForeground(new Color(22, 101, 52));
+            bannerLabel.setText("CONNECTED  " + serialService.getConnectedPortName() + "  |  Live telemetry");
+            bannerLabel.setBackground(new Color(17, 78, 49));
+            bannerLabel.setForeground(new Color(220, 252, 231));
             footerStatusLabel.setText("Link status: live");
         } else if (serialService.isConnected()) {
-            bannerLabel.setText("Receiver connected: " + serialService.getConnectedPortName() + " / waiting for telemetry");
-            bannerLabel.setBackground(new Color(254, 249, 195));
-            bannerLabel.setForeground(new Color(133, 77, 14));
+            bannerLabel.setText("CONNECTED  " + serialService.getConnectedPortName() + "  |  Waiting for telemetry");
+            bannerLabel.setBackground(new Color(120, 74, 8));
+            bannerLabel.setForeground(new Color(254, 249, 195));
             footerStatusLabel.setText("Link status: port open, no telemetry");
         } else {
             bannerLabel.setText("Receiver waiting for data");
-            bannerLabel.setBackground(new Color(230, 238, 247));
-            bannerLabel.setForeground(new Color(18, 52, 86));
+            bannerLabel.setBackground(AppTheme.PANEL_ALT);
+            bannerLabel.setForeground(AppTheme.TEXT);
             footerStatusLabel.setText("Link status: idle");
         }
 
@@ -411,7 +423,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         }
 
         detailTitle.setText("D" + selected.getDeviceId() + formatGuest(selected.getGuestName()));
-        detailVitals.setText("BPM " + selected.getBpm() + " / Battery " + (selected.getBattery() >= 0 ? selected.getBattery() + "%" : "-"));
+        detailVitals.setText("BPM " + selected.getBpm() + " / Battery " + (selected.getBattery() >= 0 ? selected.getBattery() + "%" : "unavailable"));
         detailCoords.setText(String.format("%.6f, %.6f", selected.getLatitude(), selected.getLongitude()));
         detailState.setText("State " + selected.getStatusText(System.currentTimeMillis()) + " / EMG " + selected.getEmergency() + " / Finger " + selected.getFinger());
     }
@@ -558,6 +570,92 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         ppgMonitorFrame.toFront();
     }
 
+    private void assignGuestToSelectedDevice() {
+        DeviceTelemetry selected = devices.get(selectedDeviceId);
+        if (selected == null) {
+            JOptionPane.showMessageDialog(this, "Select a device first.", "No device", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        String nextGuest = JOptionPane.showInputDialog(
+            this,
+            "Assign guest name to device D" + selected.getDeviceId(),
+            selected.getGuestName()
+        );
+        if (nextGuest == null) {
+            return;
+        }
+
+        DeviceTelemetry updated = new DeviceTelemetry(
+            selected.getDeviceId(),
+            selected.getLatitude(),
+            selected.getLongitude(),
+            selected.getEmergency(),
+            selected.getFinger(),
+            selected.getBpm(),
+            selected.getBattery(),
+            nextGuest.trim(),
+            selected.getPpgValue(),
+            selected.getReceivedAt()
+        );
+        devices.put(updated.getDeviceId(), updated);
+        tableModel.setDevices(devices);
+        selectDevice(updated.getDeviceId(), true);
+        appendLog("Assignment updated: D" + updated.getDeviceId() + " -> " + (updated.getGuestName().isEmpty() ? "unassigned" : updated.getGuestName()));
+    }
+
+    private void applyControlTheme() {
+        styleActionButton(connectButton);
+        styleActionButton(disconnectButton);
+        styleActionButton(ppgMonitorButton);
+        styleActionButton(assignGuestButton);
+        styleField(refLatField);
+        styleField(refLonField);
+        styleCombo(portComboBox);
+        styleCombo(baudComboBox);
+        styleCombo(locationModeComboBox);
+    }
+
+    private void styleActionButton(JButton button) {
+        button.setBackground(AppTheme.PANEL_ALT);
+        button.setForeground(AppTheme.TEXT);
+    }
+
+    private void styleField(JTextField field) {
+        field.setBackground(AppTheme.PANEL_ALT);
+        field.setForeground(AppTheme.TEXT);
+        field.setCaretColor(AppTheme.TEXT);
+    }
+
+    private void styleCombo(JComboBox<String> comboBox) {
+        comboBox.setBackground(AppTheme.PANEL_ALT);
+        comboBox.setForeground(AppTheme.TEXT);
+    }
+
+    private String describeTelemetry(DeviceTelemetry telemetry) {
+        double[] offset = toMetersFromReceiver(telemetry);
+        double distance = Math.sqrt(offset[0] * offset[0] + offset[1] * offset[1]);
+        String guest = telemetry.getGuestName().isEmpty() ? "Unassigned guest" : telemetry.getGuestName();
+        String battery = telemetry.getBattery() >= 0 ? telemetry.getBattery() + "%" : "n/a";
+        return guest
+            + " | D" + telemetry.getDeviceId()
+            + " | BPM " + telemetry.getBpm()
+            + " | Battery " + battery
+            + " | " + telemetry.getStatusText(System.currentTimeMillis())
+            + " | " + String.format("%.1fm", distance);
+    }
+
+    private double[] toMetersFromReceiver(DeviceTelemetry telemetry) {
+        double dLat = Math.toRadians(telemetry.getLatitude() - config.getRefLat());
+        double dLon = Math.toRadians(telemetry.getLongitude() - config.getRefLon());
+        double meanLat = Math.toRadians((telemetry.getLatitude() + config.getRefLat()) / 2.0d);
+        double earthRadius = 6378137.0d;
+        return new double[]{
+            dLon * earthRadius * Math.cos(meanLat),
+            dLat * earthRadius
+        };
+    }
+
     private void appendLog(String message) {
         logArea.append(message + "\n");
         logArea.setCaretPosition(logArea.getDocument().getLength());
@@ -613,7 +711,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         rememberPpgSample(telemetry);
         tableModel.setDevices(devices);
         restoreSelectedDeviceRow();
-        appendLog("RX " + rawLine);
+        appendLog(describeTelemetry(telemetry));
         ppgMonitorFrame.addTelemetry(telemetry);
 
         if (selectedDeviceId == -1 || !devices.containsKey(selectedDeviceId)) {

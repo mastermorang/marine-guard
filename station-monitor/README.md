@@ -14,7 +14,9 @@ It is intended to replace the browser-first workflow for field operation.
 - Lists connected devices and their vital data
 - Shows a live PPG/BPM preview panel in the main screen
 - Opens a dedicated PPG monitor window with a larger live trend graph
-- Draws simple relative positions on a local map canvas
+- Draws high-visibility relative positions on a local map canvas
+- Supports operator-side guest assignment for the selected device
+- Uses a dark, high-contrast field UI for outdoor readability
 - Stores the preferred COM port, baud rate, and reference coordinates locally
 
 ## Supported telemetry lines
@@ -84,6 +86,9 @@ The main station window now includes:
 
 - an embedded live PPG/BPM preview panel for the selected device
 - a `PPG Monitor` button for a larger dedicated graph window
+- color-coded device rows for battery, BPM, emergency, stale, and no-contact states
+- a guest assignment action for the selected device
+- receiver-centered relative map labels with live distance and mouse-wheel zoom
 
 - The embedded panel updates with the selected device in real time
 - The button opens a dedicated live graph window for the selected device

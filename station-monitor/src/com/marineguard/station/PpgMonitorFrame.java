@@ -35,13 +35,16 @@ public class PpgMonitorFrame extends JFrame {
         setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
         setMinimumSize(new Dimension(900, 520));
         getContentPane().setLayout(new BorderLayout(12, 12));
-        getContentPane().setBackground(new Color(241, 245, 249));
+        getContentPane().setBackground(AppTheme.BG);
 
         JPanel top = new JPanel(new BorderLayout(8, 8));
         top.setOpaque(false);
         targetLabel.setFont(targetLabel.getFont().deriveFont(Font.BOLD, 18f));
+        targetLabel.setForeground(AppTheme.TEXT);
         top.add(targetLabel, BorderLayout.WEST);
         graphModeToggle.addActionListener(event -> refreshView());
+        graphModeToggle.setBackground(AppTheme.PANEL_ALT);
+        graphModeToggle.setForeground(AppTheme.TEXT);
         top.add(graphModeToggle, BorderLayout.EAST);
 
         JPanel statsPanel = new JPanel(new GridLayout(1, 4, 10, 10));
@@ -67,14 +70,11 @@ public class PpgMonitorFrame extends JFrame {
 
     private JPanel createCard(String title, JLabel valueLabel) {
         JPanel card = new JPanel(new BorderLayout(6, 6));
-        card.setBackground(Color.WHITE);
-        card.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(221, 229, 239)),
-                BorderFactory.createEmptyBorder(14, 14, 14, 14)
-        ));
+        AppTheme.styleCard(card);
         JLabel titleLabel = new JLabel(title);
-        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 13f));
+        AppTheme.styleTitle(titleLabel);
         valueLabel.setFont(valueLabel.getFont().deriveFont(Font.BOLD, 18f));
+        valueLabel.setForeground(AppTheme.TEXT);
         card.add(titleLabel, BorderLayout.NORTH);
         card.add(valueLabel, BorderLayout.CENTER);
         return card;

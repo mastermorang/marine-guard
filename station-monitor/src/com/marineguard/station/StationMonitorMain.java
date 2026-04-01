@@ -8,10 +8,7 @@ public final class StationMonitorMain {
     }
 
     public static void main(String[] args) {
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception ignored) {
-        }
+        AppTheme.install();
 
         SwingUtilities.invokeLater(() -> {
             AppConfig config = AppConfig.load();
