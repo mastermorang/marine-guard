@@ -12,6 +12,7 @@ It is intended to replace the browser-first workflow for field operation.
 - Supports both manual receiver coordinates and automatic receiver GPS tracking
 - Shows receiver connection state and last data time
 - Lists connected devices and their vital data
+- Opens a dedicated PPG monitor window with a live trend graph
 - Draws simple relative positions on a local map canvas
 - Stores the preferred COM port, baud rate, and reference coordinates locally
 
@@ -27,6 +28,12 @@ Extended format:
 
 ```text
 1,$M35.097012,129.994446,0,1,088,77,Guest 1
+```
+
+Extended format with PPG raw value:
+
+```text
+1,$M35.097012,129.994446,0,1,088,77,Guest 1,512
 ```
 
 Receiver reference line for automatic tracking:
@@ -53,6 +60,7 @@ Fields:
 6. BPM
 7. Battery percent (optional)
 8. Guest name (optional)
+9. PPG raw value (optional)
 
 Receiver GPS fields:
 
@@ -68,6 +76,15 @@ Receiver GPS fields:
   reference automatically
 
 If automatic GPS data is missing, the last saved coordinates remain as the fallback.
+
+## PPG monitor window
+
+The main station window now includes a `PPG Monitor` button.
+
+- It opens a dedicated live graph window for the selected device
+- It always shows current BPM, last PPG raw value, min/max/average
+- If raw PPG values are present, the graph can switch to raw PPG mode
+- If raw PPG values are not present yet, the graph falls back to BPM trend mode
 
 ## Build
 

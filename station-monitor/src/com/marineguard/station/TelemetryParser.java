@@ -63,7 +63,24 @@ public final class TelemetryParser {
             int finger = Integer.parseInt(parts[4].trim());
             int bpm = Integer.parseInt(parts[5].trim());
             int battery = parts.length >= 7 ? Integer.parseInt(parts[6].trim()) : -1;
-            String guestName = parts.length >= 8 ? parts[7].trim() : "";
+            String guestName = "";
+            int ppgValue = -1;
+
+            if (parts.length >= 8) {
+                String extra = parts[7].trim();
+                if (isInteger(extra) && parts.length == 8) {
+                    ppgValue = Integer.parseInt(extra);
+                } else {
+                    guestName = extra;
+                }
+            }
+
+            if (parts.length >= 9) {
+                String maybePpg = parts[8].trim();
+                if (isInteger(maybePpg)) {
+                    ppgValue = Integer.parseInt(maybePpg);
+                }
+            }
 
             return ParsedLine.forTelemetry(new DeviceTelemetry(
                 deviceId,
@@ -74,6 +91,7 @@ public final class TelemetryParser {
                 bpm,
                 battery,
                 guestName,
+                ppgValue,
                 System.currentTimeMillis()
             ));
         } catch (NumberFormatException ex) {
@@ -106,5 +124,21 @@ public final class TelemetryParser {
         } catch (NumberFormatException ex) {
             return null;
         }
+    }
+
+    private static boolean isInteger(String value) {
+        if (value == null || value.isEmpty()) {
+            return false;
+        }
+        int start = value.charAt(0) == '-' ? 1 : 0;
+        if (start == value.length()) {
+            return false;
+        }
+        for (int i = start; i < value.length(); i++) {
+            if (!Character.isDigit(value.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 }

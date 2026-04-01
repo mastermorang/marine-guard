@@ -48,6 +48,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private final JTextField refLonField = new JTextField(10);
     private final JButton connectButton = new JButton("Connect");
     private final JButton disconnectButton = new JButton("Disconnect");
+    private final JButton ppgMonitorButton = new JButton("PPG Monitor");
     private final JTable deviceTable = new JTable(tableModel);
     private final JTextArea logArea = new JTextArea();
     private final JLabel detailTitle = new JLabel("No device selected");
@@ -57,6 +58,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private final JLabel receiverSourceLabel = new JLabel("Receiver ref: manual");
     private final JLabel receiverCoordsLabel = new JLabel("-");
     private final MapCanvas mapCanvas;
+    private final PpgMonitorFrame ppgMonitorFrame = new PpgMonitorFrame();
 
     private long lastTelemetryAt = 0L;
     private int selectedDeviceId = -1;
@@ -193,8 +195,10 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         connectButton.addActionListener(event -> connect());
         disconnectButton.addActionListener(event -> disconnect("user request"));
         disconnectButton.setEnabled(false);
+        ppgMonitorButton.addActionListener(event -> openPpgMonitor());
         controls.add(connectButton);
         controls.add(disconnectButton);
+        controls.add(ppgMonitorButton);
 
         footerStatusLabel.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
 
@@ -220,6 +224,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
             selectedDeviceId = device == null ? -1 : device.getDeviceId();
             refreshDetailPanel();
             refreshMap();
+            ppgMonitorFrame.setSelectedDevice(device);
         });
 
         locationModeComboBox.addActionListener(event -> {
@@ -389,6 +394,14 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         mapCanvas.setDevices(devices.values(), selectedDeviceId);
     }
 
+    private void openPpgMonitor() {
+        DeviceTelemetry selected = devices.get(selectedDeviceId);
+        ppgMonitorFrame.setSelectedDevice(selected);
+        ppgMonitorFrame.setLocationRelativeTo(this);
+        ppgMonitorFrame.setVisible(true);
+        ppgMonitorFrame.toFront();
+    }
+
     private void appendLog(String message) {
         logArea.append(message + "\n");
         logArea.setCaretPosition(logArea.getDocument().getLength());
@@ -428,6 +441,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         devices.put(telemetry.getDeviceId(), telemetry);
         tableModel.setDevices(devices);
         appendLog("RX " + rawLine);
+        ppgMonitorFrame.addTelemetry(telemetry);
 
         if (selectedDeviceId == -1) {
             selectedDeviceId = telemetry.getDeviceId();
@@ -436,6 +450,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
 
         refreshDetailPanel();
         refreshMap();
+        ppgMonitorFrame.setSelectedDevice(devices.get(selectedDeviceId));
         refreshConnectionStatus();
     }
 
