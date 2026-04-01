@@ -7,6 +7,7 @@ import javax.swing.JPanel;
 import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
 import javax.swing.border.Border;
+import javax.swing.border.TitledBorder;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Font;
@@ -78,6 +79,16 @@ public final class AppTheme {
         card.setOpaque(true);
         card.setBackground(PANEL);
         card.setBorder(cardBorder());
+    }
+
+    public static Border sectionBorder(String title) {
+        TitledBorder border = BorderFactory.createTitledBorder(
+            BorderFactory.createLineBorder(PANEL_BORDER),
+            title
+        );
+        border.setTitleColor(TEXT);
+        border.setTitleFont(border.getTitleFont().deriveFont(Font.BOLD, 14f));
+        return border;
     }
 
     public static void styleTitle(JLabel label) {

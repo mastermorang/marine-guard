@@ -7,7 +7,10 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Point;
 import java.awt.RenderingHints;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
 import java.util.Collection;
@@ -18,6 +21,9 @@ public class MapCanvas extends JPanel {
     private Collection<DeviceTelemetry> devices;
     private int selectedDeviceId = -1;
     private double zoomFactor = 1.8d;
+    private int panX;
+    private int panY;
+    private Point dragStart;
 
     public MapCanvas(double refLat, double refLon) {
         this.refLat = refLat;
@@ -25,6 +31,9 @@ public class MapCanvas extends JPanel {
         this.devices = java.util.Collections.emptyList();
         setBackground(AppTheme.PANEL);
         addMouseWheelListener(new ZoomListener());
+        DragHandler dragHandler = new DragHandler();
+        addMouseListener(dragHandler);
+        addMouseMotionListener(dragHandler);
     }
 
     public void setReferencePoint(double refLat, double refLon) {
@@ -48,8 +57,8 @@ public class MapCanvas extends JPanel {
         int width = getWidth();
         int height = getHeight();
         int padding = 36;
-        int centerX = width / 2;
-        int centerY = height / 2;
+        int centerX = width / 2 + panX;
+        int centerY = height / 2 + panY;
 
         g2.setColor(AppTheme.GRID);
         for (int x = padding; x < width; x += 80) {
@@ -67,7 +76,8 @@ public class MapCanvas extends JPanel {
 
         g2.setColor(AppTheme.TEXT_MUTED);
         g2.drawString(String.format("Ref %.6f, %.6f", refLat, refLon), padding, height - 12);
-        g2.drawString(String.format("Zoom x%.1f", zoomFactor / 1.8d), width - 105, height - 12);
+        g2.drawString(String.format("Zoom x%.1f", zoomFactor / 1.8d), width - 125, height - 28);
+        g2.drawString(String.format("Scale %.0fm", 100d / zoomFactor), width - 125, height - 12);
 
         for (DeviceTelemetry device : devices) {
             double[] offset = toMeters(device.getLatitude(), device.getLongitude());
@@ -138,6 +148,24 @@ public class MapCanvas extends JPanel {
         public void mouseWheelMoved(MouseWheelEvent event) {
             double next = zoomFactor * (event.getWheelRotation() > 0 ? 0.9d : 1.1d);
             zoomFactor = Math.max(0.6d, Math.min(8.5d, next));
+            repaint();
+        }
+    }
+
+    private final class DragHandler extends MouseAdapter {
+        @Override
+        public void mousePressed(MouseEvent event) {
+            dragStart = event.getPoint();
+        }
+
+        @Override
+        public void mouseDragged(MouseEvent event) {
+            if (dragStart == null) {
+                return;
+            }
+            panX += event.getX() - dragStart.x;
+            panY += event.getY() - dragStart.y;
+            dragStart = event.getPoint();
             repaint();
         }
     }

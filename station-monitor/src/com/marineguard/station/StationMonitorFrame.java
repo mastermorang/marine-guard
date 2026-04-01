@@ -2,82 +2,60 @@ package com.marineguard.station;
 
 import jssc.SerialPortException;
 
-import javax.swing.BorderFactory;
-import javax.swing.DefaultComboBoxModel;
-import javax.swing.JButton;
-import javax.swing.JComboBox;
-import javax.swing.JFrame;
-import javax.swing.JLabel;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.JScrollPane;
-import javax.swing.JSplitPane;
-import javax.swing.JTable;
-import javax.swing.JTextArea;
-import javax.swing.JTextField;
-import javax.swing.ListSelectionModel;
-import javax.swing.SwingConstants;
-import javax.swing.SwingUtilities;
-import javax.swing.Timer;
-import javax.swing.WindowConstants;
-import java.awt.BorderLayout;
-import java.awt.Color;
-import java.awt.Component;
-import java.awt.Dimension;
-import java.awt.FlowLayout;
-import java.awt.Font;
-import java.awt.GridLayout;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
+import javax.swing.*;
+import javax.swing.event.ListSelectionEvent;
+import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
 
 public class StationMonitorFrame extends JFrame implements SerialReceiverService.Listener {
     private final AppConfig config;
     private final SerialReceiverService serialService;
     private final Map<Integer, DeviceTelemetry> devices = new LinkedHashMap<Integer, DeviceTelemetry>();
-    private final Map<Integer, Deque<PpgSample>> ppgHistoryByDevice = new HashMap<Integer, Deque<PpgSample>>();
-    private final DeviceTableModel tableModel = new DeviceTableModel();
-
-    private final JLabel bannerLabel = new JLabel("Receiver waiting for data", SwingConstants.LEFT);
-    private final JLabel footerStatusLabel = new JLabel("Link status: idle");
+    private final Map<Integer, Deque<PpgSample>> ppgHistory = new HashMap<Integer, Deque<PpgSample>>();
+    private final List<EventEntry> eventEntries = new ArrayList<EventEntry>();
+    private final DefaultListModel<DeviceTelemetry> deviceListModel = new DefaultListModel<DeviceTelemetry>();
+    private final JList<DeviceTelemetry> deviceList = new JList<DeviceTelemetry>(deviceListModel);
+    private final JTextArea eventLogArea = new JTextArea();
+    private final JLabel statusLabel = new JLabel("Receiver waiting for data");
+    private final JLabel summaryLabel = new JLabel("0 devices online | Avg battery n/a");
+    private final JButton connectButton = new JButton("Connect");
+    private final JButton disconnectButton = new JButton("Disconnect");
+    private final JButton exportButton = new JButton("Export CSV");
+    private final JButton fullscreenButton = new JButton("Fullscreen");
+    private final JButton settingsButton = new JButton("Settings");
+    private final JButton helpButton = new JButton("Help");
+    private final JButton assignGuestButton = new JButton("Assign Guest");
+    private final JButton ppgMonitorButton = new JButton("PPG Monitor");
     private final JComboBox<String> portComboBox = new JComboBox<String>();
     private final JComboBox<String> baudComboBox = new JComboBox<String>(new String[]{"9600", "57600", "115200"});
     private final JComboBox<String> locationModeComboBox = new JComboBox<String>(new String[]{"Manual", "Auto receiver GPS"});
     private final JTextField refLatField = new JTextField(10);
     private final JTextField refLonField = new JTextField(10);
-    private final JButton connectButton = new JButton("Connect");
-    private final JButton disconnectButton = new JButton("Disconnect");
-    private final JButton ppgMonitorButton = new JButton("PPG Monitor");
-    private final JButton assignGuestButton = new JButton("Assign Guest");
-    private final JTable deviceTable = new JTable(tableModel);
-    private final JTextArea logArea = new JTextArea();
-    private final JLabel detailTitle = new JLabel("No device selected");
-    private final JLabel detailVitals = new JLabel("-");
-    private final JLabel detailCoords = new JLabel("-");
-    private final JLabel detailState = new JLabel("-");
-    private final JLabel receiverSourceLabel = new JLabel("Receiver ref: manual");
-    private final JLabel receiverCoordsLabel = new JLabel("-");
-    private final JLabel ppgPreviewTitleLabel = new JLabel("No device selected");
-    private final JLabel ppgPreviewBpmLabel = new JLabel("--");
-    private final JLabel ppgPreviewRawLabel = new JLabel("--");
-    private final JLabel ppgPreviewModeLabel = new JLabel("Graph: BPM trend");
-    private final JLabel ppgPreviewStatsLabel = new JLabel("min -- / max -- / avg --");
-    private final PpgChartPanel ppgPreviewChart = new PpgChartPanel();
+    private final JLabel selectedTitleLabel = new JLabel("No device selected");
+    private final JLabel selectedGuestLabel = new JLabel("-");
+    private final JLabel selectedMetaLabel = new JLabel("-");
+    private final JLabel receiverRefLabel = new JLabel("-");
+    private final JLabel ppgSummaryLabel = new JLabel("min -- / max -- / avg --");
+    private final VitalsGaugePanel vitalsGauge = new VitalsGaugePanel();
+    private final PpgChartPanel ppgChart = new PpgChartPanel();
     private final MapCanvas mapCanvas;
     private final PpgMonitorFrame ppgMonitorFrame = new PpgMonitorFrame();
-
-    private long lastTelemetryAt = 0L;
+    private final JToggleButton allFilterButton = new JToggleButton("All", true);
+    private final JToggleButton warningFilterButton = new JToggleButton("Warning");
+    private final JToggleButton emergencyFilterButton = new JToggleButton("Emergency");
+    private long lastTelemetryAt;
     private int selectedDeviceId = -1;
-    private boolean disconnectWarningShown = false;
+    private boolean disconnectWarningShown;
+    private boolean fullscreen;
     private ReceiverLocation lastReceiverLocation;
 
     public StationMonitorFrame(AppConfig config) {
@@ -89,177 +67,72 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         loadInitialValues();
         refreshPorts();
         attachListeners();
-        startHeartbeat();
-        applyLocationMode();
-        refreshReceiverReferenceLabels();
+        new javax.swing.Timer(1000, e -> { updateHeaderStatus(); refreshSelectedPanels(); mapCanvas.repaint(); }).start();
+        updateHeaderStatus();
+        refreshReceiverReferenceLabel();
+        refreshSelectedPanels();
+        refreshEventLog();
     }
 
     private void configureUi() {
         setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
-        setMinimumSize(new Dimension(1360, 860));
+        setMinimumSize(new Dimension(1680, 960));
         getContentPane().setLayout(new BorderLayout(12, 12));
         getContentPane().setBackground(AppTheme.BG);
-
-        bannerLabel.setOpaque(true);
-        bannerLabel.setBackground(AppTheme.PANEL_ALT);
-        bannerLabel.setForeground(AppTheme.TEXT);
-        bannerLabel.setBorder(BorderFactory.createEmptyBorder(14, 18, 14, 18));
-        bannerLabel.setFont(bannerLabel.getFont().deriveFont(Font.BOLD, 18f));
-        getContentPane().add(bannerLabel, BorderLayout.NORTH);
-
-        getContentPane().add(createControlPanel(), BorderLayout.SOUTH);
-        getContentPane().add(createMainPanel(), BorderLayout.CENTER);
+        getContentPane().add(createTopBar(), BorderLayout.NORTH);
+        getContentPane().add(createMainBody(), BorderLayout.CENTER);
+        getContentPane().add(createBottomLogPanel(), BorderLayout.SOUTH);
     }
 
-    private JPanel createMainPanel() {
-        JPanel mainPanel = new JPanel(new BorderLayout(12, 12));
-        mainPanel.setOpaque(false);
-
-        deviceTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        deviceTable.setRowSelectionAllowed(true);
-        deviceTable.setColumnSelectionAllowed(false);
-        deviceTable.setCellSelectionEnabled(false);
-        deviceTable.setRowHeight(28);
-        deviceTable.setDefaultRenderer(Object.class, new DeviceTableCellRenderer());
-        deviceTable.setBackground(AppTheme.PANEL);
-        deviceTable.setForeground(AppTheme.TEXT);
-        deviceTable.setGridColor(AppTheme.GRID);
-        deviceTable.getTableHeader().setBackground(AppTheme.PANEL_ALT);
-        deviceTable.getTableHeader().setForeground(AppTheme.TEXT);
-        JScrollPane tableScroll = new JScrollPane(deviceTable);
-        tableScroll.setBorder(BorderFactory.createTitledBorder("Devices"));
-        tableScroll.getViewport().setBackground(AppTheme.BG);
-
-        JPanel rightPanel = new JPanel(new BorderLayout(12, 12));
-        rightPanel.setOpaque(false);
-        JPanel topPanel = new JPanel(new BorderLayout(12, 12));
-        topPanel.setOpaque(false);
-        topPanel.add(createDetailPanel(), BorderLayout.NORTH);
-        topPanel.add(createPpgPreviewPanel(), BorderLayout.CENTER);
-        rightPanel.add(topPanel, BorderLayout.NORTH);
-
-        JScrollPane mapScroll = new JScrollPane(mapCanvas);
-        mapScroll.setBorder(BorderFactory.createTitledBorder("Relative map"));
-        mapCanvas.setPreferredSize(new Dimension(720, 480));
-        rightPanel.add(mapScroll, BorderLayout.CENTER);
-
-        logArea.setEditable(false);
-        logArea.setLineWrap(true);
-        logArea.setWrapStyleWord(true);
-        JScrollPane logScroll = new JScrollPane(logArea);
-        logScroll.setPreferredSize(new Dimension(720, 170));
-        logScroll.setBorder(BorderFactory.createTitledBorder("Event log"));
-        logArea.setBackground(AppTheme.PANEL);
-        logArea.setForeground(AppTheme.TEXT);
-        logArea.setCaretColor(AppTheme.TEXT);
-        rightPanel.add(logScroll, BorderLayout.SOUTH);
-
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, tableScroll, rightPanel);
-        splitPane.setResizeWeight(0.42d);
-        splitPane.setBorder(null);
-        mainPanel.add(splitPane, BorderLayout.CENTER);
-        return mainPanel;
+    private JPanel createTopBar() {
+        JPanel bar = new JPanel(new BorderLayout(16, 10));
+        bar.setBackground(AppTheme.PANEL);
+        bar.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
+        JLabel title = new JLabel("Marine Guard Station Monitor");
+        title.setForeground(AppTheme.TEXT);
+        title.setFont(title.getFont().deriveFont(Font.BOLD, 28f));
+        statusLabel.setForeground(AppTheme.SUCCESS);
+        statusLabel.setFont(statusLabel.getFont().deriveFont(Font.BOLD, 20f));
+        summaryLabel.setForeground(AppTheme.TEXT_MUTED);
+        summaryLabel.setFont(summaryLabel.getFont().deriveFont(Font.PLAIN, 15f));
+        JPanel left = new JPanel(); left.setOpaque(false); left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS)); left.add(title); left.add(statusLabel); left.add(summaryLabel);
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 4)); right.setOpaque(false);
+        for (JButton b : new JButton[]{connectButton, disconnectButton, exportButton, fullscreenButton, settingsButton, helpButton}) { styleButton(b); right.add(b); }
+        bar.add(left, BorderLayout.CENTER); bar.add(right, BorderLayout.EAST); return bar;
     }
 
-    private JPanel createDetailPanel() {
-        JPanel panel = new JPanel(new GridLayout(1, 4, 10, 10));
-        panel.setOpaque(false);
-        panel.add(createStatCard("Selected device", detailTitle));
-        panel.add(createStatCard("Vitals", detailVitals));
-        panel.add(createStatCard("Coords / status", createTwoLinePanel(detailCoords, detailState)));
-        panel.add(createStatCard("Receiver reference", createTwoLinePanel(receiverSourceLabel, receiverCoordsLabel)));
-        return panel;
+    private JPanel createMainBody() {
+        JPanel body = new JPanel(new BorderLayout(12, 12)); body.setOpaque(false);
+        JPanel left = new JPanel(new BorderLayout(10, 10)); left.setBackground(AppTheme.PANEL); left.setBorder(AppTheme.sectionBorder("Devices")); left.setPreferredSize(new Dimension(320, 0));
+        deviceList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION); deviceList.setBackground(AppTheme.PANEL); deviceList.setCellRenderer(new DeviceListCellRenderer());
+        JScrollPane listScroll = new JScrollPane(deviceList); listScroll.setBorder(null); listScroll.getViewport().setBackground(AppTheme.PANEL);
+        JPanel leftBtns = new JPanel(new GridLayout(2, 1, 8, 8)); leftBtns.setOpaque(false); styleButton(assignGuestButton); styleButton(ppgMonitorButton); leftBtns.add(assignGuestButton); leftBtns.add(ppgMonitorButton);
+        left.add(listScroll, BorderLayout.CENTER); left.add(leftBtns, BorderLayout.SOUTH);
+
+        JPanel center = new JPanel(new BorderLayout(8, 8)); center.setBackground(AppTheme.PANEL); center.setBorder(AppTheme.sectionBorder("Relative Map"));
+        JLabel mapHelp = new JLabel("Wheel: zoom  |  Drag: pan  |  Receiver stays at center"); mapHelp.setForeground(AppTheme.TEXT_MUTED); mapHelp.setHorizontalAlignment(SwingConstants.RIGHT);
+        center.add(mapCanvas, BorderLayout.CENTER); center.add(mapHelp, BorderLayout.SOUTH);
+
+        JPanel right = new JPanel(new BorderLayout(10, 10)); right.setOpaque(false); right.setPreferredSize(new Dimension(360, 0));
+        JPanel selected = new JPanel(new GridLayout(4, 1, 6, 6)); AppTheme.styleCard(selected); selected.setBorder(AppTheme.sectionBorder("Selected Device"));
+        styleInfo(selectedTitleLabel, 22f, true); styleInfo(selectedGuestLabel, 18f, false); styleInfo(selectedMetaLabel, 14f, false); styleInfo(receiverRefLabel, 13f, false);
+        selected.add(selectedTitleLabel); selected.add(selectedGuestLabel); selected.add(selectedMetaLabel); selected.add(receiverRefLabel);
+        JPanel vitals = new JPanel(new BorderLayout()); vitals.setBorder(AppTheme.sectionBorder("Vitals")); vitals.setBackground(AppTheme.PANEL); vitals.add(vitalsGauge, BorderLayout.CENTER);
+        JPanel ppg = new JPanel(new BorderLayout()); ppg.setBorder(AppTheme.sectionBorder("PPG Waveform")); ppg.setBackground(AppTheme.PANEL); ppg.add(ppgChart, BorderLayout.CENTER);
+        JPanel summary = new JPanel(new BorderLayout()); summary.setBorder(AppTheme.sectionBorder("PPG Summary")); summary.setBackground(AppTheme.PANEL); styleInfo(ppgSummaryLabel, 16f, false); summary.add(ppgSummaryLabel, BorderLayout.CENTER);
+        JPanel rightBottom = new JPanel(new GridLayout(2, 1, 10, 10)); rightBottom.setOpaque(false); rightBottom.add(ppg); rightBottom.add(summary);
+        right.add(selected, BorderLayout.NORTH); right.add(vitals, BorderLayout.CENTER); right.add(rightBottom, BorderLayout.SOUTH);
+
+        body.add(left, BorderLayout.WEST); body.add(center, BorderLayout.CENTER); body.add(right, BorderLayout.EAST); return body;
     }
 
-    private JPanel createPpgPreviewPanel() {
-        JPanel panel = new JPanel(new BorderLayout(10, 10));
-        panel.setOpaque(false);
-        panel.setPreferredSize(new Dimension(0, 260));
-
-        JPanel statsGrid = new JPanel(new GridLayout(1, 4, 10, 10));
-        statsGrid.setOpaque(false);
-        statsGrid.add(createStatCard("PPG target", ppgPreviewTitleLabel));
-        statsGrid.add(createStatCard("Current BPM", ppgPreviewBpmLabel));
-        statsGrid.add(createStatCard("Current raw PPG", ppgPreviewRawLabel));
-        statsGrid.add(createStatCard("PPG summary", createTwoLinePanel(ppgPreviewModeLabel, ppgPreviewStatsLabel)));
-
-        ppgPreviewChart.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(221, 229, 239)),
-                BorderFactory.createEmptyBorder(8, 8, 8, 8)
-        ));
-        ppgPreviewChart.setPreferredSize(new Dimension(0, 170));
-
-        panel.add(statsGrid, BorderLayout.NORTH);
-        panel.add(ppgPreviewChart, BorderLayout.CENTER);
-        return panel;
-    }
-
-    private JPanel createStatCard(String title, Component body) {
-        JPanel card = new JPanel(new BorderLayout(6, 6));
-        AppTheme.styleCard(card);
-
-        JLabel titleLabel = new JLabel(title);
-        AppTheme.styleTitle(titleLabel);
-        AppTheme.styleValue(body);
-        card.add(titleLabel, BorderLayout.NORTH);
-        card.add(body, BorderLayout.CENTER);
-        return card;
-    }
-
-    private JPanel createTwoLinePanel(JLabel first, JLabel second) {
-        JPanel panel = new JPanel(new GridLayout(2, 1, 0, 6));
-        panel.setOpaque(false);
-        panel.add(first);
-        panel.add(second);
-        return panel;
-    }
-
-    private JPanel createControlPanel() {
-        JPanel container = new JPanel(new BorderLayout());
-        container.setOpaque(false);
-
-        JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
-        controls.setOpaque(false);
-
-        controls.add(new JLabel("COM"));
-        portComboBox.setPreferredSize(new Dimension(130, 30));
-        controls.add(portComboBox);
-
-        JButton refreshButton = new JButton("Refresh");
-        refreshButton.addActionListener(event -> refreshPorts());
-        controls.add(refreshButton);
-
-        controls.add(new JLabel("Baud"));
-        baudComboBox.setEditable(true);
-        baudComboBox.setPreferredSize(new Dimension(100, 30));
-        controls.add(baudComboBox);
-
-        controls.add(new JLabel("Ref mode"));
-        locationModeComboBox.setPreferredSize(new Dimension(150, 30));
-        controls.add(locationModeComboBox);
-
-        controls.add(new JLabel("Ref lat"));
-        controls.add(refLatField);
-
-        controls.add(new JLabel("Ref lon"));
-        controls.add(refLonField);
-
-        connectButton.addActionListener(event -> connect());
-        disconnectButton.addActionListener(event -> disconnect("user request"));
-        disconnectButton.setEnabled(false);
-        ppgMonitorButton.addActionListener(event -> openPpgMonitor());
-        assignGuestButton.addActionListener(event -> assignGuestToSelectedDevice());
-        controls.add(connectButton);
-        controls.add(disconnectButton);
-        controls.add(ppgMonitorButton);
-        controls.add(assignGuestButton);
-
-        footerStatusLabel.setForeground(AppTheme.TEXT);
-        footerStatusLabel.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
-
-        container.add(controls, BorderLayout.CENTER);
-        container.add(footerStatusLabel, BorderLayout.WEST);
-        return container;
+    private JPanel createBottomLogPanel() {
+        JPanel panel = new JPanel(new BorderLayout(8, 8)); panel.setBackground(AppTheme.PANEL); panel.setBorder(AppTheme.sectionBorder("Event Log")); panel.setPreferredSize(new Dimension(0, 220));
+        eventLogArea.setEditable(false); eventLogArea.setLineWrap(true); eventLogArea.setWrapStyleWord(true); eventLogArea.setBackground(AppTheme.PANEL_ALT); eventLogArea.setForeground(AppTheme.TEXT); eventLogArea.setCaretColor(AppTheme.TEXT);
+        JScrollPane logScroll = new JScrollPane(eventLogArea); logScroll.setBorder(null); logScroll.getViewport().setBackground(AppTheme.PANEL_ALT);
+        ButtonGroup group = new ButtonGroup(); group.add(allFilterButton); group.add(warningFilterButton); group.add(emergencyFilterButton); styleToggle(allFilterButton); styleToggle(warningFilterButton); styleToggle(emergencyFilterButton);
+        JPanel filters = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0)); filters.setOpaque(false); filters.add(allFilterButton); filters.add(warningFilterButton); filters.add(emergencyFilterButton);
+        panel.add(filters, BorderLayout.NORTH); panel.add(logScroll, BorderLayout.CENTER); return panel;
     }
 
     private void loadInitialValues() {
@@ -267,481 +140,149 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         refLonField.setText(String.valueOf(config.getRefLon()));
         baudComboBox.setSelectedItem(String.valueOf(config.getBaudRate()));
         locationModeComboBox.setSelectedIndex(config.isAutoReceiverLocation() ? 1 : 0);
-        applyControlTheme();
+        styleCombo(portComboBox); styleCombo(baudComboBox); styleCombo(locationModeComboBox); styleField(refLatField); styleField(refLonField);
     }
 
     private void attachListeners() {
-        deviceTable.getSelectionModel().addListSelectionListener(event -> {
-            if (event.getValueIsAdjusting()) {
-                return;
-            }
-            syncSelectionFromTable();
-        });
-
-        deviceTable.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent event) {
-                syncSelectionFromTable();
-            }
-        });
-
-        locationModeComboBox.addActionListener(event -> {
-            config.setAutoReceiverLocation(isAutoReceiverLocationEnabled());
-            applyLocationMode();
-            persistConfig();
-            refreshReceiverReferenceLabels();
-        });
-
-        addWindowListener(new WindowAdapter() {
-            @Override
-            public void windowClosing(WindowEvent event) {
-                disconnect("window closing");
-                persistConfig();
-                dispose();
-            }
-        });
-    }
-
-    private void startHeartbeat() {
-        Timer timer = new Timer(1000, event -> refreshConnectionStatus());
-        timer.start();
-    }
-
-    private boolean isAutoReceiverLocationEnabled() {
-        return locationModeComboBox.getSelectedIndex() == 1;
-    }
-
-    private void applyLocationMode() {
-        boolean autoMode = isAutoReceiverLocationEnabled();
-        refLatField.setEnabled(!autoMode);
-        refLonField.setEnabled(!autoMode);
+        deviceList.addListSelectionListener((ListSelectionEvent e) -> { if (!e.getValueIsAdjusting() && deviceList.getSelectedValue() != null) selectDevice(deviceList.getSelectedValue().getDeviceId(), false); });
+        deviceList.addMouseListener(new MouseAdapter() { @Override public void mouseClicked(MouseEvent e) { if (e.getClickCount() >= 2) assignGuestToSelectedDevice(); } });
+        connectButton.addActionListener(e -> connect()); disconnectButton.addActionListener(e -> disconnect("user request")); exportButton.addActionListener(e -> exportLogCsv()); fullscreenButton.addActionListener(e -> toggleFullscreen());
+        settingsButton.addActionListener(e -> openSettingsDialog()); helpButton.addActionListener(e -> showHelpDialog()); assignGuestButton.addActionListener(e -> assignGuestToSelectedDevice()); ppgMonitorButton.addActionListener(e -> openPpgMonitor());
+        allFilterButton.addActionListener(e -> refreshEventLog()); warningFilterButton.addActionListener(e -> refreshEventLog()); emergencyFilterButton.addActionListener(e -> refreshEventLog());
+        addWindowListener(new WindowAdapter() { @Override public void windowClosing(WindowEvent e) { disconnect("window closing"); persistConfig(); dispose(); } });
     }
 
     private void refreshPorts() {
         String current = String.valueOf(portComboBox.getSelectedItem());
         String[] ports = SerialReceiverService.listPorts();
         portComboBox.setModel(new DefaultComboBoxModel<String>(ports));
-
-        if (config.getPortName() != null && !config.getPortName().isEmpty()) {
-            portComboBox.setSelectedItem(config.getPortName());
-        } else if (current != null) {
-            portComboBox.setSelectedItem(current);
-        }
-
-        if (portComboBox.getSelectedItem() == null && ports.length > 0) {
-            portComboBox.setSelectedIndex(0);
-        }
+        if (config.getPortName() != null && !config.getPortName().isEmpty()) portComboBox.setSelectedItem(config.getPortName()); else if (current != null) portComboBox.setSelectedItem(current);
+        if (portComboBox.getSelectedItem() == null && ports.length > 0) portComboBox.setSelectedIndex(0);
     }
+
+    private boolean autoRef() { return locationModeComboBox.getSelectedIndex() == 1; }
 
     private void connect() {
-        String portName = String.valueOf(portComboBox.getSelectedItem());
-        if (portName == null || portName.trim().isEmpty() || "null".equals(portName)) {
-            JOptionPane.showMessageDialog(this, "Select a COM port first.", "No port", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-
-        int baudRate;
+        String port = String.valueOf(portComboBox.getSelectedItem());
+        if (port == null || port.trim().isEmpty() || "null".equals(port)) { JOptionPane.showMessageDialog(this, "Select a COM port first.", "No port", JOptionPane.WARNING_MESSAGE); return; }
         try {
-            baudRate = Integer.parseInt(String.valueOf(baudComboBox.getSelectedItem()).trim());
-            if (!isAutoReceiverLocationEnabled()) {
-                double refLat = Double.parseDouble(refLatField.getText().trim());
-                double refLon = Double.parseDouble(refLonField.getText().trim());
-                config.setRefLat(refLat);
-                config.setRefLon(refLon);
-                mapCanvas.setReferencePoint(refLat, refLon);
-            }
+            int baud = Integer.parseInt(String.valueOf(baudComboBox.getSelectedItem()).trim());
+            if (!autoRef()) { config.setRefLat(Double.parseDouble(refLatField.getText().trim())); config.setRefLon(Double.parseDouble(refLonField.getText().trim())); mapCanvas.setReferencePoint(config.getRefLat(), config.getRefLon()); }
+            config.setPortName(port); config.setBaudRate(baud); config.setAutoReceiverLocation(autoRef()); persistConfig(); serialService.connect(port, baud);
+            appendEvent(EventEntry.Level.INFO, "Receiver connected on " + port + " @ " + baud);
         } catch (NumberFormatException ex) {
             JOptionPane.showMessageDialog(this, "Invalid baud rate or reference coordinates.", "Input error", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        config.setPortName(portName);
-        config.setBaudRate(baudRate);
-        config.setAutoReceiverLocation(isAutoReceiverLocationEnabled());
-        persistConfig();
-
-        try {
-            serialService.connect(portName, baudRate);
-            appendLog("Connected to " + portName + " @ " + baudRate);
-            if (isAutoReceiverLocationEnabled()) {
-                appendLog("Waiting for receiver GPS lines to update reference point.");
-            }
         } catch (SerialPortException ex) {
-            JOptionPane.showMessageDialog(this, "Serial connect failed: " + ex.getMessage(), "Connect failed", JOptionPane.ERROR_MESSAGE);
-            appendLog("Connect failed: " + ex.getMessage());
+            JOptionPane.showMessageDialog(this, "Serial connect failed: " + ex.getMessage(), "Connect failed", JOptionPane.ERROR_MESSAGE); appendEvent(EventEntry.Level.WARNING, "Connect failed: " + ex.getMessage());
         }
     }
 
-    private void disconnect(String reason) {
-        serialService.disconnect(reason);
+    private void disconnect(String reason) { serialService.disconnect(reason); }
+
+    private void openSettingsDialog() {
+        refreshPorts();
+        JPanel panel = new JPanel(new GridLayout(0, 2, 8, 8)); panel.setBackground(AppTheme.BG);
+        panel.add(new JLabel("COM Port")); panel.add(portComboBox); panel.add(new JLabel("Baud")); panel.add(baudComboBox); panel.add(new JLabel("Reference mode")); panel.add(locationModeComboBox); panel.add(new JLabel("Reference lat")); panel.add(refLatField); panel.add(new JLabel("Reference lon")); panel.add(refLonField);
+        int result = JOptionPane.showConfirmDialog(this, panel, "Field Settings", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (result == JOptionPane.OK_OPTION) try { config.setPortName(String.valueOf(portComboBox.getSelectedItem())); config.setBaudRate(Integer.parseInt(String.valueOf(baudComboBox.getSelectedItem()))); config.setAutoReceiverLocation(autoRef()); if (!config.isAutoReceiverLocation()) { config.setRefLat(Double.parseDouble(refLatField.getText().trim())); config.setRefLon(Double.parseDouble(refLonField.getText().trim())); mapCanvas.setReferencePoint(config.getRefLat(), config.getRefLon()); } persistConfig(); refreshReceiverReferenceLabel(); } catch (NumberFormatException ex) { JOptionPane.showMessageDialog(this, "Invalid settings values.", "Settings", JOptionPane.ERROR_MESSAGE); }
     }
 
-    private void persistConfig() {
-        try {
-            config.save();
-        } catch (IOException ex) {
-            appendLog("Config save failed: " + ex.getMessage());
-        }
+    private void showHelpDialog() { JOptionPane.showMessageDialog(this, "Mouse wheel: zoom map\nDouble-click device card: assign guest\nPPG Monitor: open larger waveform window\nSettings: COM/baud/reference point", "Marine Guard Help", JOptionPane.INFORMATION_MESSAGE); }
+
+    private void exportLogCsv() {
+        JFileChooser chooser = new JFileChooser(); chooser.setSelectedFile(new File("marine-guard-events.csv"));
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(chooser.getSelectedFile()))) {
+            writer.write("timestamp,level,message"); writer.newLine();
+            for (EventEntry entry : eventEntries) { writer.write(entry.getTimestamp() + "," + entry.getLevel() + ",\"" + entry.getMessage().replace("\"", "\"\"") + "\""); writer.newLine(); }
+            appendEvent(EventEntry.Level.INFO, "Event log exported: " + chooser.getSelectedFile().getAbsolutePath());
+        } catch (IOException ex) { JOptionPane.showMessageDialog(this, "Export failed: " + ex.getMessage(), "Export", JOptionPane.ERROR_MESSAGE); }
     }
 
-    private void refreshConnectionStatus() {
-        long now = System.currentTimeMillis();
-        boolean recentData = now - lastTelemetryAt <= 15000L;
-
-        if (serialService.isConnected() && recentData) {
-            disconnectWarningShown = false;
-            bannerLabel.setText("CONNECTED  " + serialService.getConnectedPortName() + "  |  Live telemetry");
-            bannerLabel.setBackground(new Color(17, 78, 49));
-            bannerLabel.setForeground(new Color(220, 252, 231));
-            footerStatusLabel.setText("Link status: live");
-        } else if (serialService.isConnected()) {
-            bannerLabel.setText("CONNECTED  " + serialService.getConnectedPortName() + "  |  Waiting for telemetry");
-            bannerLabel.setBackground(new Color(120, 74, 8));
-            bannerLabel.setForeground(new Color(254, 249, 195));
-            footerStatusLabel.setText("Link status: port open, no telemetry");
-        } else {
-            bannerLabel.setText("Receiver waiting for data");
-            bannerLabel.setBackground(AppTheme.PANEL_ALT);
-            bannerLabel.setForeground(AppTheme.TEXT);
-            footerStatusLabel.setText("Link status: idle");
-        }
-
-        tableModel.fireTableDataChanged();
-        refreshDetailPanel();
-        refreshMap();
-        refreshReceiverReferenceLabels();
-    }
-
-    private void refreshDetailPanel() {
-        DeviceTelemetry selected = devices.get(selectedDeviceId);
-        if (selected == null) {
-            detailTitle.setText("No device selected");
-            detailVitals.setText("-");
-            detailCoords.setText("-");
-            detailState.setText("-");
-            return;
-        }
-
-        detailTitle.setText("D" + selected.getDeviceId() + formatGuest(selected.getGuestName()));
-        detailVitals.setText("BPM " + selected.getBpm() + " / Battery " + (selected.getBattery() >= 0 ? selected.getBattery() + "%" : "unavailable"));
-        detailCoords.setText(String.format("%.6f, %.6f", selected.getLatitude(), selected.getLongitude()));
-        detailState.setText("State " + selected.getStatusText(System.currentTimeMillis()) + " / EMG " + selected.getEmergency() + " / Finger " + selected.getFinger());
-    }
-
-    private void refreshReceiverReferenceLabels() {
-        if (isAutoReceiverLocationEnabled()) {
-            if (lastReceiverLocation == null) {
-                receiverSourceLabel.setText("Receiver ref: auto / waiting");
-                receiverCoordsLabel.setText(String.format("Fallback %.6f, %.6f", config.getRefLat(), config.getRefLon()));
-            } else {
-                String source = lastReceiverLocation.getSource().isEmpty() ? "auto" : lastReceiverLocation.getSource();
-                receiverSourceLabel.setText("Receiver ref: auto / " + source);
-                receiverCoordsLabel.setText(String.format("%.6f, %.6f", lastReceiverLocation.getLatitude(), lastReceiverLocation.getLongitude()));
-            }
-        } else {
-            receiverSourceLabel.setText("Receiver ref: manual");
-            receiverCoordsLabel.setText(String.format("%.6f, %.6f", config.getRefLat(), config.getRefLon()));
-        }
-    }
-
-    private String formatGuest(String guestName) {
-        return guestName == null || guestName.isEmpty() ? "" : " (" + guestName + ")";
-    }
-
-    private void refreshMap() {
-        mapCanvas.setDevices(devices.values(), selectedDeviceId);
-    }
-
-    private void rememberPpgSample(DeviceTelemetry telemetry) {
-        Deque<PpgSample> history = ppgHistoryByDevice.get(telemetry.getDeviceId());
-        if (history == null) {
-            history = new ArrayDeque<PpgSample>();
-            ppgHistoryByDevice.put(telemetry.getDeviceId(), history);
-        }
-        history.addLast(new PpgSample(telemetry.getReceivedAt(), telemetry.getBpm(), telemetry.getPpgValue()));
-        long cutoff = telemetry.getReceivedAt() - 60000L;
-        while (!history.isEmpty() && history.peekFirst().getTimestamp() < cutoff) {
-            history.removeFirst();
-        }
-    }
-
-    private void syncSelectionFromTable() {
-        int row = deviceTable.getSelectedRow();
-        if (row < 0) {
-            return;
-        }
-        DeviceTelemetry device = tableModel.getDeviceAt(row);
-        if (device == null) {
-            return;
-        }
-        selectDevice(device.getDeviceId(), false);
-    }
-
-    private void selectDevice(int deviceId, boolean updateTableSelection) {
-        DeviceTelemetry device = devices.get(deviceId);
-        if (device == null) {
-            return;
-        }
-
-        selectedDeviceId = deviceId;
-        if (updateTableSelection) {
-            restoreSelectedDeviceRow();
-        }
-        refreshDetailPanel();
-        refreshMap();
-        refreshPpgPreview();
-        ppgMonitorFrame.setSelectedDevice(device);
-    }
-
-    private void restoreSelectedDeviceRow() {
-        if (selectedDeviceId < 0) {
-            return;
-        }
-        for (int row = 0; row < tableModel.getRowCount(); row++) {
-            DeviceTelemetry device = tableModel.getDeviceAt(row);
-            if (device != null && device.getDeviceId() == selectedDeviceId) {
-                if (deviceTable.getSelectedRow() != row) {
-                    deviceTable.getSelectionModel().setSelectionInterval(row, row);
-                }
-                deviceTable.scrollRectToVisible(deviceTable.getCellRect(row, 0, true));
-                return;
-            }
-        }
-    }
-
-    private void refreshPpgPreview() {
-        DeviceTelemetry selected = devices.get(selectedDeviceId);
-        if (selected == null) {
-            ppgPreviewTitleLabel.setText("No device selected");
-            ppgPreviewBpmLabel.setText("--");
-            ppgPreviewRawLabel.setText("--");
-            ppgPreviewModeLabel.setText("Graph: BPM trend");
-            ppgPreviewStatsLabel.setText("min -- / max -- / avg --");
-            ppgPreviewChart.setSamples(new ArrayList<PpgSample>(), false);
-            return;
-        }
-
-        String suffix = selected.getGuestName().isEmpty() ? "" : " (" + selected.getGuestName() + ")";
-        ppgPreviewTitleLabel.setText("D" + selected.getDeviceId() + suffix);
-
-        Deque<PpgSample> history = ppgHistoryByDevice.get(selectedDeviceId);
-        List<PpgSample> samples = history == null ? new ArrayList<PpgSample>() : new ArrayList<PpgSample>(history);
-        boolean showRawPpg = hasRawPpg(samples);
-
-        ppgPreviewBpmLabel.setText(selected.getBpm() + " bpm");
-        ppgPreviewRawLabel.setText(selected.getPpgValue() >= 0 ? String.valueOf(selected.getPpgValue()) : "n/a");
-        ppgPreviewModeLabel.setText(showRawPpg ? "Graph: raw PPG" : "Graph: BPM trend");
-
-        if (samples.isEmpty()) {
-            ppgPreviewStatsLabel.setText("min -- / max -- / avg --");
-            ppgPreviewChart.setSamples(samples, showRawPpg);
-            return;
-        }
-
-        int min = Integer.MAX_VALUE;
-        int max = Integer.MIN_VALUE;
-        long sum = 0L;
-        int count = 0;
-        for (PpgSample sample : samples) {
-            int value = showRawPpg && sample.getPpgValue() >= 0 ? sample.getPpgValue() : sample.getBpm();
-            min = Math.min(min, value);
-            max = Math.max(max, value);
-            sum += value;
-            count++;
-        }
-        ppgPreviewStatsLabel.setText("min " + min + " / max " + max + " / avg " + (count == 0 ? "--" : sum / count));
-        ppgPreviewChart.setSamples(samples, showRawPpg);
-    }
-
-    private boolean hasRawPpg(List<PpgSample> samples) {
-        for (PpgSample sample : samples) {
-            if (sample.getPpgValue() >= 0) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private void openPpgMonitor() {
-        DeviceTelemetry selected = devices.get(selectedDeviceId);
-        ppgMonitorFrame.setSelectedDevice(selected);
-        ppgMonitorFrame.setLocationRelativeTo(this);
-        ppgMonitorFrame.setVisible(true);
-        ppgMonitorFrame.toFront();
-    }
+    private void toggleFullscreen() { fullscreen = !fullscreen; setExtendedState(fullscreen ? JFrame.MAXIMIZED_BOTH : JFrame.NORMAL); }
 
     private void assignGuestToSelectedDevice() {
         DeviceTelemetry selected = devices.get(selectedDeviceId);
-        if (selected == null) {
-            JOptionPane.showMessageDialog(this, "Select a device first.", "No device", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-
-        String nextGuest = JOptionPane.showInputDialog(
-            this,
-            "Assign guest name to device D" + selected.getDeviceId(),
-            selected.getGuestName()
-        );
-        if (nextGuest == null) {
-            return;
-        }
-
-        DeviceTelemetry updated = new DeviceTelemetry(
-            selected.getDeviceId(),
-            selected.getLatitude(),
-            selected.getLongitude(),
-            selected.getEmergency(),
-            selected.getFinger(),
-            selected.getBpm(),
-            selected.getBattery(),
-            nextGuest.trim(),
-            selected.getPpgValue(),
-            selected.getReceivedAt()
-        );
-        devices.put(updated.getDeviceId(), updated);
-        tableModel.setDevices(devices);
-        selectDevice(updated.getDeviceId(), true);
-        appendLog("Assignment updated: D" + updated.getDeviceId() + " -> " + (updated.getGuestName().isEmpty() ? "unassigned" : updated.getGuestName()));
+        if (selected == null) { JOptionPane.showMessageDialog(this, "Select a device first.", "No device", JOptionPane.WARNING_MESSAGE); return; }
+        String next = JOptionPane.showInputDialog(this, "Assign guest name to D" + selected.getDeviceId(), selected.getGuestName());
+        if (next == null) return;
+        DeviceTelemetry updated = new DeviceTelemetry(selected.getDeviceId(), selected.getLatitude(), selected.getLongitude(), selected.getEmergency(), selected.getFinger(), selected.getBpm(), selected.getBattery(), next.trim(), selected.getPpgValue(), selected.getReceivedAt());
+        devices.put(updated.getDeviceId(), updated); refreshDeviceList(); selectDevice(updated.getDeviceId(), true); appendEvent(EventEntry.Level.INFO, "Assigned guest " + (updated.getGuestName().isEmpty() ? "(unassigned)" : updated.getGuestName()) + " to D" + updated.getDeviceId());
     }
 
-    private void applyControlTheme() {
-        styleActionButton(connectButton);
-        styleActionButton(disconnectButton);
-        styleActionButton(ppgMonitorButton);
-        styleActionButton(assignGuestButton);
-        styleField(refLatField);
-        styleField(refLonField);
-        styleCombo(portComboBox);
-        styleCombo(baudComboBox);
-        styleCombo(locationModeComboBox);
+    private void refreshDeviceList() {
+        List<DeviceTelemetry> sorted = new ArrayList<DeviceTelemetry>(devices.values());
+        sorted.sort(Comparator.comparingInt(this::severityScore).reversed().thenComparingInt(DeviceTelemetry::getDeviceId));
+        deviceListModel.clear(); for (DeviceTelemetry t : sorted) deviceListModel.addElement(t); restoreSelectedDeviceSelection();
     }
 
-    private void styleActionButton(JButton button) {
-        button.setBackground(AppTheme.PANEL_ALT);
-        button.setForeground(AppTheme.TEXT);
+    private int severityScore(DeviceTelemetry t) {
+        long now = System.currentTimeMillis();
+        if (t.getEmergency() > 0) return 5;
+        if (t.getBattery() >= 0 && t.getBattery() < 20) return 4;
+        if (t.getBpm() > 120 || (t.getBpm() > 0 && t.getBpm() < 40)) return 3;
+        if (t.getFinger() == 0) return 2;
+        if (t.isStale(now)) return 1;
+        return 0;
     }
 
-    private void styleField(JTextField field) {
-        field.setBackground(AppTheme.PANEL_ALT);
-        field.setForeground(AppTheme.TEXT);
-        field.setCaretColor(AppTheme.TEXT);
+    private void restoreSelectedDeviceSelection() {
+        if (selectedDeviceId < 0) return;
+        for (int i = 0; i < deviceListModel.size(); i++) if (deviceListModel.get(i).getDeviceId() == selectedDeviceId) { deviceList.setSelectedIndex(i); deviceList.ensureIndexIsVisible(i); return; }
     }
 
-    private void styleCombo(JComboBox<String> comboBox) {
-        comboBox.setBackground(AppTheme.PANEL_ALT);
-        comboBox.setForeground(AppTheme.TEXT);
+    private void selectDevice(int deviceId, boolean updateListSelection) {
+        DeviceTelemetry telemetry = devices.get(deviceId); if (telemetry == null) return;
+        selectedDeviceId = deviceId; if (updateListSelection) restoreSelectedDeviceSelection();
+        refreshSelectedPanels(); mapCanvas.setDevices(devices.values(), selectedDeviceId); ppgMonitorFrame.setSelectedDevice(telemetry);
     }
 
-    private String describeTelemetry(DeviceTelemetry telemetry) {
-        double[] offset = toMetersFromReceiver(telemetry);
-        double distance = Math.sqrt(offset[0] * offset[0] + offset[1] * offset[1]);
-        String guest = telemetry.getGuestName().isEmpty() ? "Unassigned guest" : telemetry.getGuestName();
-        String battery = telemetry.getBattery() >= 0 ? telemetry.getBattery() + "%" : "n/a";
-        return guest
-            + " | D" + telemetry.getDeviceId()
-            + " | BPM " + telemetry.getBpm()
-            + " | Battery " + battery
-            + " | " + telemetry.getStatusText(System.currentTimeMillis())
-            + " | " + String.format("%.1fm", distance);
+    private void refreshSelectedPanels() {
+        DeviceTelemetry selected = devices.get(selectedDeviceId);
+        if (selected == null) { selectedTitleLabel.setText("No device selected"); selectedGuestLabel.setText("-"); selectedMetaLabel.setText("-"); ppgSummaryLabel.setText("min -- / max -- / avg --"); receiverRefLabel.setText(referenceText()); vitalsGauge.setTelemetry(null); ppgChart.setSamples(new ArrayList<PpgSample>(), false); return; }
+        selectedTitleLabel.setText("Device D" + selected.getDeviceId());
+        selectedGuestLabel.setText(selected.getGuestName().isEmpty() ? "(unassigned)" : selected.getGuestName());
+        selectedMetaLabel.setText("BPM " + selected.getBpm() + " | Battery " + (selected.getBattery() >= 0 ? selected.getBattery() + "%" : "n/a") + " | " + selected.getStatusText(System.currentTimeMillis()));
+        receiverRefLabel.setText(referenceText()); vitalsGauge.setTelemetry(selected);
+        List<PpgSample> samples = samplesForDevice(selectedDeviceId); boolean raw = hasRawPpg(samples); ppgChart.setSamples(samples, raw); ppgSummaryLabel.setText(buildPpgSummary(samples, raw));
     }
 
-    private double[] toMetersFromReceiver(DeviceTelemetry telemetry) {
-        double dLat = Math.toRadians(telemetry.getLatitude() - config.getRefLat());
-        double dLon = Math.toRadians(telemetry.getLongitude() - config.getRefLon());
-        double meanLat = Math.toRadians((telemetry.getLatitude() + config.getRefLat()) / 2.0d);
-        double earthRadius = 6378137.0d;
-        return new double[]{
-            dLon * earthRadius * Math.cos(meanLat),
-            dLat * earthRadius
-        };
+    private String referenceText() { return config.isAutoReceiverLocation() && lastReceiverLocation != null ? String.format("Receiver ref auto %.6f, %.6f", lastReceiverLocation.getLatitude(), lastReceiverLocation.getLongitude()) : String.format("Receiver ref %.6f, %.6f", config.getRefLat(), config.getRefLon()); }
+    private List<PpgSample> samplesForDevice(int id) { Deque<PpgSample> h = ppgHistory.get(id); return h == null ? new ArrayList<PpgSample>() : new ArrayList<PpgSample>(h); }
+    private boolean hasRawPpg(List<PpgSample> s) { for (PpgSample p : s) if (p.getPpgValue() >= 0) return true; return false; }
+    private String buildPpgSummary(List<PpgSample> s, boolean raw) { if (s.isEmpty()) return "min -- / max -- / avg --"; int min = Integer.MAX_VALUE, max = Integer.MIN_VALUE; long sum = 0; for (PpgSample p : s) { int v = raw && p.getPpgValue() >= 0 ? p.getPpgValue() : p.getBpm(); min = Math.min(min, v); max = Math.max(max, v); sum += v; } return "min " + min + " / max " + max + " / avg " + (sum / s.size()); }
+
+    private void rememberPpgSample(DeviceTelemetry telemetry) {
+        Deque<PpgSample> h = ppgHistory.get(telemetry.getDeviceId()); if (h == null) { h = new ArrayDeque<PpgSample>(); ppgHistory.put(telemetry.getDeviceId(), h); }
+        h.addLast(new PpgSample(telemetry.getReceivedAt(), telemetry.getBpm(), telemetry.getPpgValue())); long cutoff = telemetry.getReceivedAt() - 60000L; while (!h.isEmpty() && h.peekFirst().getTimestamp() < cutoff) h.removeFirst();
     }
 
-    private void appendLog(String message) {
-        logArea.append(message + "\n");
-        logArea.setCaretPosition(logArea.getDocument().getLength());
+    private void updateHeaderStatus() {
+        boolean connected = serialService.isConnected(); long now = System.currentTimeMillis(); int online = 0; int batteryCount = 0; long batterySum = 0L;
+        for (DeviceTelemetry d : devices.values()) { if (!d.isStale(now)) online++; if (d.getBattery() >= 0) { batteryCount++; batterySum += d.getBattery(); } }
+        if (connected && now - lastTelemetryAt <= 15000L) { statusLabel.setForeground(AppTheme.SUCCESS); statusLabel.setText("CONNECTED " + serialService.getConnectedPortName()); }
+        else if (connected) { statusLabel.setForeground(AppTheme.WARNING); statusLabel.setText("CONNECTED " + serialService.getConnectedPortName() + " | waiting"); }
+        else { statusLabel.setForeground(AppTheme.DANGER); statusLabel.setText("DISCONNECTED"); }
+        summaryLabel.setText(online + " devices online | Avg battery " + (batteryCount == 0 ? "n/a" : (batterySum / batteryCount) + "%")); connectButton.setEnabled(!connected); disconnectButton.setEnabled(connected);
     }
 
-    @Override
-    public void onConnected(String portName) {
-        connectButton.setEnabled(false);
-        disconnectButton.setEnabled(true);
-        appendLog("Receiver connected on " + portName);
-        refreshConnectionStatus();
-    }
+    private void refreshReceiverReferenceLabel() { receiverRefLabel.setText(referenceText()); }
+    private void appendEvent(EventEntry.Level level, String message) { eventEntries.add(new EventEntry(System.currentTimeMillis(), level, message)); while (eventEntries.size() > 500) eventEntries.remove(0); refreshEventLog(); }
+    private void refreshEventLog() { StringBuilder b = new StringBuilder(); for (EventEntry e : eventEntries) if (allFilterButton.isSelected() || warningFilterButton.isSelected() && e.getLevel() == EventEntry.Level.WARNING || emergencyFilterButton.isSelected() && e.getLevel() == EventEntry.Level.EMERGENCY) b.append(e.formatLine()).append('\n'); eventLogArea.setText(b.toString()); eventLogArea.setCaretPosition(eventLogArea.getDocument().getLength()); }
+    private EventEntry.Level classify(DeviceTelemetry t) { long now = System.currentTimeMillis(); if (t.getEmergency() > 0) return EventEntry.Level.EMERGENCY; if (t.isStale(now) || t.getFinger() == 0 || t.getBpm() > 120 || t.getBpm() > 0 && t.getBpm() < 40 || t.getBattery() >= 0 && t.getBattery() < 20) return EventEntry.Level.WARNING; return EventEntry.Level.INFO; }
+    private String describe(DeviceTelemetry t) { double[] o = toMetersFromReceiver(t); double d = Math.sqrt(o[0] * o[0] + o[1] * o[1]); String g = t.getGuestName().isEmpty() ? "Unassigned guest" : t.getGuestName(); String battery = t.getBattery() >= 0 ? t.getBattery() + "%" : "n/a"; return g + " - BPM " + t.getBpm() + ", Battery " + battery + ", " + String.format("%.1fm", d) + ", " + t.getStatusText(System.currentTimeMillis()); }
+    private double[] toMetersFromReceiver(DeviceTelemetry t) { double dLat = Math.toRadians(t.getLatitude() - config.getRefLat()), dLon = Math.toRadians(t.getLongitude() - config.getRefLon()), meanLat = Math.toRadians((t.getLatitude() + config.getRefLat()) / 2d), r = 6378137d; return new double[]{dLon * r * Math.cos(meanLat), dLat * r}; }
+    private void persistConfig() { try { config.save(); } catch (IOException ex) { appendEvent(EventEntry.Level.WARNING, "Config save failed: " + ex.getMessage()); } }
+    private void styleButton(JButton b) { b.setBackground(AppTheme.PANEL_ALT); b.setForeground(AppTheme.TEXT); b.setFocusPainted(false); }
+    private void styleToggle(JToggleButton b) { b.setBackground(AppTheme.PANEL_ALT); b.setForeground(AppTheme.TEXT); b.setFocusPainted(false); }
+    private void styleCombo(JComboBox<String> c) { c.setBackground(AppTheme.PANEL_ALT); c.setForeground(AppTheme.TEXT); }
+    private void styleField(JTextField f) { f.setBackground(AppTheme.PANEL_ALT); f.setForeground(AppTheme.TEXT); f.setCaretColor(AppTheme.TEXT); }
+    private void styleInfo(JLabel l, float size, boolean bold) { l.setForeground(AppTheme.TEXT); l.setFont(l.getFont().deriveFont(bold ? Font.BOLD : Font.PLAIN, size)); }
+    private void openPpgMonitor() { ppgMonitorFrame.setSelectedDevice(devices.get(selectedDeviceId)); ppgMonitorFrame.setLocationRelativeTo(this); ppgMonitorFrame.setVisible(true); ppgMonitorFrame.toFront(); }
 
-    @Override
-    public void onDisconnected(String reason) {
-        connectButton.setEnabled(true);
-        disconnectButton.setEnabled(false);
-        appendLog("Receiver disconnected: " + reason);
-        refreshConnectionStatus();
-
-        if (!"user request".equals(reason) && !"window closing".equals(reason) && !"reconnect".equals(reason) && !disconnectWarningShown) {
-            disconnectWarningShown = true;
-            SwingUtilities.invokeLater(() ->
-                JOptionPane.showMessageDialog(
-                    this,
-                    "Receiver link dropped.\nReason: " + reason,
-                    "Disconnected",
-                    JOptionPane.WARNING_MESSAGE
-                )
-            );
-        }
-    }
-
-    @Override
-    public void onTelemetry(DeviceTelemetry telemetry, String rawLine) {
-        lastTelemetryAt = telemetry.getReceivedAt();
-        DeviceTelemetry previous = devices.get(telemetry.getDeviceId());
-        if (previous != null) {
-            telemetry = new DeviceTelemetry(
-                telemetry.getDeviceId(),
-                telemetry.getLatitude(),
-                telemetry.getLongitude(),
-                telemetry.getEmergency(),
-                telemetry.getFinger(),
-                telemetry.getBpm(),
-                telemetry.getBattery() >= 0 ? telemetry.getBattery() : previous.getBattery(),
-                telemetry.getGuestName().isEmpty() ? previous.getGuestName() : telemetry.getGuestName(),
-                telemetry.getPpgValue() >= 0 ? telemetry.getPpgValue() : previous.getPpgValue(),
-                telemetry.getReceivedAt()
-            );
-        }
-        devices.put(telemetry.getDeviceId(), telemetry);
-        rememberPpgSample(telemetry);
-        tableModel.setDevices(devices);
-        restoreSelectedDeviceRow();
-        appendLog(describeTelemetry(telemetry));
-        ppgMonitorFrame.addTelemetry(telemetry);
-
-        if (selectedDeviceId == -1 || !devices.containsKey(selectedDeviceId)) {
-            selectedDeviceId = telemetry.getDeviceId();
-        }
-
-        selectDevice(selectedDeviceId, true);
-        refreshConnectionStatus();
-    }
-
-    @Override
-    public void onReceiverLocation(ReceiverLocation receiverLocation, String rawLine) {
-        lastReceiverLocation = receiverLocation;
-        appendLog("RX-REF " + rawLine);
-
-        if (isAutoReceiverLocationEnabled()) {
-            config.setRefLat(receiverLocation.getLatitude());
-            config.setRefLon(receiverLocation.getLongitude());
-            refLatField.setText(String.valueOf(receiverLocation.getLatitude()));
-            refLonField.setText(String.valueOf(receiverLocation.getLongitude()));
-            mapCanvas.setReferencePoint(receiverLocation.getLatitude(), receiverLocation.getLongitude());
-            persistConfig();
-        }
-
-        refreshReceiverReferenceLabels();
-        refreshMap();
-    }
-
-    @Override
-    public void onMessage(String message) {
-        appendLog(message);
-    }
+    @Override public void onConnected(String portName) { disconnectWarningShown = false; appendEvent(EventEntry.Level.INFO, "Receiver connected on " + portName); updateHeaderStatus(); }
+    @Override public void onDisconnected(String reason) { appendEvent(EventEntry.Level.WARNING, "Receiver disconnected: " + reason); updateHeaderStatus(); if (!"user request".equals(reason) && !"window closing".equals(reason) && !"reconnect".equals(reason) && !disconnectWarningShown) { disconnectWarningShown = true; SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Receiver link dropped.\nReason: " + reason, "Disconnected", JOptionPane.WARNING_MESSAGE)); } }
+    @Override public void onTelemetry(DeviceTelemetry telemetry, String rawLine) { lastTelemetryAt = telemetry.getReceivedAt(); DeviceTelemetry prev = devices.get(telemetry.getDeviceId()); if (prev != null) telemetry = new DeviceTelemetry(telemetry.getDeviceId(), telemetry.getLatitude(), telemetry.getLongitude(), telemetry.getEmergency(), telemetry.getFinger(), telemetry.getBpm(), telemetry.getBattery() >= 0 ? telemetry.getBattery() : prev.getBattery(), telemetry.getGuestName().isEmpty() ? prev.getGuestName() : telemetry.getGuestName(), telemetry.getPpgValue() >= 0 ? telemetry.getPpgValue() : prev.getPpgValue(), telemetry.getReceivedAt()); devices.put(telemetry.getDeviceId(), telemetry); rememberPpgSample(telemetry); refreshDeviceList(); if (selectedDeviceId < 0 || !devices.containsKey(selectedDeviceId)) selectedDeviceId = telemetry.getDeviceId(); selectDevice(selectedDeviceId, true); mapCanvas.setDevices(devices.values(), selectedDeviceId); ppgMonitorFrame.addTelemetry(telemetry); appendEvent(classify(telemetry), describe(telemetry)); updateHeaderStatus(); }
+    @Override public void onReceiverLocation(ReceiverLocation r, String rawLine) { lastReceiverLocation = r; appendEvent(EventEntry.Level.INFO, "Receiver GPS updated: " + r.getSource()); if (config.isAutoReceiverLocation()) { config.setRefLat(r.getLatitude()); config.setRefLon(r.getLongitude()); refLatField.setText(String.valueOf(r.getLatitude())); refLonField.setText(String.valueOf(r.getLongitude())); mapCanvas.setReferencePoint(r.getLatitude(), r.getLongitude()); persistConfig(); } refreshReceiverReferenceLabel(); }
+    @Override public void onMessage(String message) { appendEvent(EventEntry.Level.INFO, message); }
 }

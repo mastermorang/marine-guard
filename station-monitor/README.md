@@ -19,6 +19,16 @@ It is intended to replace the browser-first workflow for field operation.
 - Uses a dark, high-contrast field UI for outdoor readability
 - Stores the preferred COM port, baud rate, and reference coordinates locally
 
+## Field layout
+
+The current field UI is organized as:
+
+- Top status bar with receiver state, online count, average battery, and quick actions
+- Left device sidebar with card-based device list
+- Center large relative map with zoom and pan
+- Right sidebar for selected device, vitals gauge, and PPG panels
+- Bottom operator log with All / Warning / Emergency filters
+
 ## Supported telemetry lines
 
 Legacy format:
