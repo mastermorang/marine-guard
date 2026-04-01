@@ -65,6 +65,7 @@ public final class TelemetryParser {
             String guestName = "";
             int battery = -1;
             int ppgValue = -1;
+            boolean rawPpgPresent = false;
 
             for (int i = 6; i < parts.length; i++) {
                 String token = parts[i].trim();
@@ -81,6 +82,7 @@ public final class TelemetryParser {
                 Integer labeledPpg = tryParseLabeledInt(token, "PPG");
                 if (labeledPpg != null) {
                     ppgValue = labeledPpg;
+                    rawPpgPresent = true;
                     continue;
                 }
 
@@ -92,10 +94,11 @@ public final class TelemetryParser {
                 }
 
                 int numeric = Integer.parseInt(token);
-                if (battery < 0 && numeric > 0 && numeric <= 100) {
+                if (battery < 0 && isLikelyBatteryValue(numeric, ppgValue, rawPpgPresent)) {
                     battery = numeric;
-                } else if (ppgValue < 0) {
+                } else if (ppgValue < 0 && isLikelyRawPpgValue(numeric, battery, rawPpgPresent)) {
                     ppgValue = numeric;
+                    rawPpgPresent = true;
                 } else if (guestName.isEmpty()) {
                     guestName = token;
                 }
@@ -111,6 +114,7 @@ public final class TelemetryParser {
                 battery,
                 guestName,
                 ppgValue,
+                rawPpgPresent,
                 System.currentTimeMillis()
             ));
         } catch (NumberFormatException ex) {
@@ -176,5 +180,22 @@ public final class TelemetryParser {
 
     private static int clampBattery(int value) {
         return Math.max(0, Math.min(100, value));
+    }
+
+    private static boolean isLikelyBatteryValue(int numeric, int currentPpgValue, boolean rawPpgPresent) {
+        return !rawPpgPresent && currentPpgValue < 0 && numeric > 0 && numeric <= 100;
+    }
+
+    private static boolean isLikelyRawPpgValue(int numeric, int battery, boolean rawPpgPresent) {
+        if (rawPpgPresent) {
+            return false;
+        }
+        if (numeric <= 1) {
+            return false;
+        }
+        if (numeric > 100) {
+            return true;
+        }
+        return battery >= 0;
     }
 }

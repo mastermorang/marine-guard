@@ -10,6 +10,7 @@ public class DeviceTelemetry {
     private final int battery;
     private final String guestName;
     private final int ppgValue;
+    private final boolean rawPpgPresent;
     private final long receivedAt;
 
     public DeviceTelemetry(
@@ -22,6 +23,7 @@ public class DeviceTelemetry {
             int battery,
             String guestName,
             int ppgValue,
+            boolean rawPpgPresent,
             long receivedAt
     ) {
         this.deviceId = deviceId;
@@ -33,6 +35,7 @@ public class DeviceTelemetry {
         this.battery = battery;
         this.guestName = guestName == null ? "" : guestName;
         this.ppgValue = ppgValue;
+        this.rawPpgPresent = rawPpgPresent;
         this.receivedAt = receivedAt;
     }
 
@@ -70,6 +73,10 @@ public class DeviceTelemetry {
 
     public int getPpgValue() {
         return ppgValue;
+    }
+
+    public boolean hasRawPpg() {
+        return rawPpgPresent;
     }
 
     public long getReceivedAt() {

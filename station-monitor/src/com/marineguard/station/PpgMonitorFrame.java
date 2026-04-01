@@ -86,7 +86,7 @@ public class PpgMonitorFrame extends JFrame {
             history = new ArrayDeque<PpgSample>();
             historyByDevice.put(telemetry.getDeviceId(), history);
         }
-        history.addLast(new PpgSample(telemetry.getReceivedAt(), telemetry.getBpm(), telemetry.getPpgValue()));
+        history.addLast(new PpgSample(telemetry.getReceivedAt(), telemetry.getBpm(), telemetry.getPpgValue(), telemetry.hasRawPpg()));
         long cutoff = telemetry.getReceivedAt() - 60000L;
         while (!history.isEmpty() && history.peekFirst().getTimestamp() < cutoff) {
             history.removeFirst();
@@ -138,14 +138,14 @@ public class PpgMonitorFrame extends JFrame {
 
         PpgSample latest = samples.get(samples.size() - 1);
         currentValueLabel.setText(latest.getBpm() + " bpm");
-        currentPpgLabel.setText(latest.getPpgValue() >= 0 ? String.valueOf(latest.getPpgValue()) : "n/a");
+        currentPpgLabel.setText(latest.hasRawPpg() ? String.valueOf(latest.getPpgValue()) : "n/a");
 
         int min = Integer.MAX_VALUE;
         int max = Integer.MIN_VALUE;
         long sum = 0L;
         int count = 0;
         for (PpgSample sample : samples) {
-            int value = showPpg && sample.getPpgValue() >= 0 ? sample.getPpgValue() : sample.getBpm();
+            int value = showPpg && sample.hasRawPpg() ? sample.getPpgValue() : sample.getBpm();
             min = Math.min(min, value);
             max = Math.max(max, value);
             sum += value;
@@ -157,7 +157,7 @@ public class PpgMonitorFrame extends JFrame {
 
     private boolean hasRawPpg(List<PpgSample> samples) {
         for (PpgSample sample : samples) {
-            if (sample.getPpgValue() >= 0) {
+            if (sample.hasRawPpg()) {
                 return true;
             }
         }

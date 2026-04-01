@@ -60,7 +60,7 @@ public class PpgChartPanel extends JPanel {
         int min = Integer.MAX_VALUE;
         int max = Integer.MIN_VALUE;
         for (PpgSample sample : samples) {
-            int value = showPpg && sample.getPpgValue() >= 0 ? sample.getPpgValue() : sample.getBpm();
+            int value = showPpg && sample.hasRawPpg() ? sample.getPpgValue() : sample.getBpm();
             min = Math.min(min, value);
             max = Math.max(max, value);
         }
@@ -79,7 +79,7 @@ public class PpgChartPanel extends JPanel {
         int prevX = -1;
         int prevY = -1;
         for (PpgSample sample : samples) {
-            int value = showPpg && sample.getPpgValue() >= 0 ? sample.getPpgValue() : sample.getBpm();
+            int value = showPpg && sample.hasRawPpg() ? sample.getPpgValue() : sample.getBpm();
             int x = left + (int) ((sample.getTimestamp() - firstTs) * plotWidth / span);
             int y = top + plotHeight - (int) ((long) (value - min) * plotHeight / Math.max(1, max - min));
             if (prevX >= 0) {
