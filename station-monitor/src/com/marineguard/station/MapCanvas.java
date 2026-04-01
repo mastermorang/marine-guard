@@ -1,7 +1,6 @@
 package com.marineguard.station;
 
 import javax.swing.JPanel;
-import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
@@ -90,13 +89,6 @@ public class MapCanvas extends JPanel {
 
             g2.setColor(marker);
             g2.fillOval(x - 8, y - 8, 16, 16);
-            if (device.getEmergency() > 0) {
-                float pulse = 18f + (System.currentTimeMillis() % 1200L) / 1200f * 10f;
-                g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.5f));
-                g2.setStroke(new BasicStroke(2f));
-                g2.drawOval((int) (x - pulse / 2), (int) (y - pulse / 2), (int) pulse, (int) pulse);
-                g2.setComposite(AlphaComposite.SrcOver);
-            }
             if (selected) {
                 g2.setColor(AppTheme.SELECTED);
                 g2.setStroke(new BasicStroke(2.2f));
@@ -118,17 +110,11 @@ public class MapCanvas extends JPanel {
 
     private Color statusColor(DeviceTelemetry device) {
         long now = System.currentTimeMillis();
-        if (device.getEmergency() > 0) {
-            return AppTheme.DANGER;
-        }
         if (device.isStale(now)) {
             return AppTheme.OFFLINE;
         }
         if (device.getBpm() > 120 || (device.getBpm() > 0 && device.getBpm() < 40)) {
             return AppTheme.WARNING;
-        }
-        if (device.getFinger() == 0) {
-            return new Color(156, 163, 175);
         }
         return AppTheme.SUCCESS;
     }

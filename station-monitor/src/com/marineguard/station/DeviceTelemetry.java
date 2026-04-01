@@ -91,11 +91,8 @@ public class DeviceTelemetry {
         if (isStale(now)) {
             return "offline";
         }
-        if (emergency > 0) {
-            return "emergency";
-        }
-        if (finger == 0) {
-            return "no-contact";
+        if (bpm > 120 || (bpm > 0 && bpm < 40)) {
+            return "warning";
         }
         return "active";
     }

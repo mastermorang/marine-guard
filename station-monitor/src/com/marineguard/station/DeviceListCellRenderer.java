@@ -51,13 +51,11 @@ public class DeviceListCellRenderer extends JPanel implements ListCellRenderer<D
         String guest = value.getGuestName().isEmpty() ? "Guest: (unassigned)" : "Guest: " + value.getGuestName();
         titleLabel.setText("ID " + value.getDeviceId());
         guestLabel.setText(guest);
-        bpmLabel.setText(value.getFinger() == 0 ? "--" : value.getBpm() + " BPM");
+        bpmLabel.setText(value.getBpm() > 0 ? value.getBpm() + " BPM" : "--");
         statusLabel.setText("Status " + value.getStatusText(now));
 
         Color panelColor = AppTheme.PANEL;
-        if (value.getEmergency() > 0) {
-            panelColor = new Color(94, 24, 36);
-        } else if (value.isStale(now)) {
+        if (value.isStale(now)) {
             panelColor = new Color(55, 63, 77);
         } else if (value.getBpm() > 120 || (value.getBpm() > 0 && value.getBpm() < 40)) {
             panelColor = new Color(99, 66, 14);
@@ -70,7 +68,7 @@ public class DeviceListCellRenderer extends JPanel implements ListCellRenderer<D
         setBackground(panelColor);
         titleLabel.setForeground(AppTheme.TEXT);
         guestLabel.setForeground(value.getGuestName().isEmpty() ? AppTheme.DANGER : AppTheme.TEXT_MUTED);
-        bpmLabel.setForeground(value.getFinger() == 0 ? AppTheme.TEXT_MUTED : value.getEmergency() > 0 ? AppTheme.DANGER : value.getBpm() > 120 ? AppTheme.WARNING : AppTheme.SUCCESS);
+        bpmLabel.setForeground(value.getBpm() > 120 ? AppTheme.WARNING : value.getBpm() > 0 ? AppTheme.SUCCESS : AppTheme.TEXT_MUTED);
         statusLabel.setForeground(AppTheme.TEXT);
         assignHintLabel.setForeground(AppTheme.TEXT_MUTED);
         return this;

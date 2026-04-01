@@ -88,7 +88,7 @@ public class PpgMonitorFrame extends JFrame {
             history = new ArrayDeque<PpgSample>();
             historyByDevice.put(telemetry.getDeviceId(), history);
         }
-        history.addLast(new PpgSample(telemetry.getReceivedAt(), telemetry.getBpm(), telemetry.getPpgValue(), telemetry.hasRawPpg(), telemetry.getFinger() > 0));
+        history.addLast(new PpgSample(telemetry.getReceivedAt(), telemetry.getBpm(), telemetry.getPpgValue(), telemetry.hasRawPpg(), true));
         long cutoff = telemetry.getReceivedAt() - 60000L;
         while (!history.isEmpty() && history.peekFirst().getTimestamp() < cutoff) {
             history.removeFirst();
@@ -128,8 +128,6 @@ public class PpgMonitorFrame extends JFrame {
         Deque<PpgSample> history = historyByDevice.get(selectedDeviceId);
         List<PpgSample> samples = history == null ? new ArrayList<PpgSample>() : new ArrayList<PpgSample>(history);
         boolean showPpg = graphModeToggle.isSelected() && hasRawPpg(samples);
-        DeviceTelemetry latestTelemetry = latestTelemetryByDevice.get(selectedDeviceId);
-        boolean hasContact = latestTelemetry != null && latestTelemetry.getFinger() > 0;
         modeLabel.setText(showPpg ? "Graph: raw PPG" : "Graph: BPM trend");
 
         if (samples.isEmpty()) {
@@ -141,40 +139,27 @@ public class PpgMonitorFrame extends JFrame {
         }
 
         PpgSample latest = samples.get(samples.size() - 1);
-        currentValueLabel.setText(hasContact ? latest.getBpm() + " bpm" : "--");
-        currentPpgLabel.setText(hasContact && latest.hasRawPpg() ? String.valueOf(latest.getPpgValue()) : "n/a");
-
-        if (!hasContact) {
-            statsLabel.setText("no contact");
-            chartPanel.setSamples(samples, showPpg);
-            return;
-        }
+        currentValueLabel.setText(latest.getBpm() > 0 ? latest.getBpm() + " bpm" : "--");
+        currentPpgLabel.setText(latest.hasRawPpg() ? String.valueOf(latest.getPpgValue()) : "n/a");
 
         int min = Integer.MAX_VALUE;
         int max = Integer.MIN_VALUE;
         long sum = 0L;
         int count = 0;
         for (PpgSample sample : samples) {
-            if (!sample.hasContact()) {
-                continue;
-            }
             int value = showPpg && sample.hasRawPpg() ? sample.getPpgValue() : sample.getBpm();
             min = Math.min(min, value);
             max = Math.max(max, value);
             sum += value;
             count++;
         }
-        if (count == 0) {
-            statsLabel.setText("no contact");
-        } else {
-            statsLabel.setText("min " + min + " / max " + max + " / avg " + (sum / count));
-        }
+        statsLabel.setText(count == 0 ? "min -- / max -- / avg --" : "min " + min + " / max " + max + " / avg " + (sum / count));
         chartPanel.setSamples(samples, showPpg);
     }
 
     private boolean hasRawPpg(List<PpgSample> samples) {
         for (PpgSample sample : samples) {
-            if (sample.hasContact() && sample.hasRawPpg()) {
+            if (sample.hasRawPpg()) {
                 return true;
             }
         }
