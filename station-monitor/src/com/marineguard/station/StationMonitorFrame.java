@@ -259,8 +259,14 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
                 return;
             }
             int row = deviceTable.getSelectedRow();
+            if (row < 0) {
+                return;
+            }
             DeviceTelemetry device = tableModel.getDeviceAt(row);
-            selectedDeviceId = device == null ? -1 : device.getDeviceId();
+            if (device == null) {
+                return;
+            }
+            selectedDeviceId = device.getDeviceId();
             refreshDetailPanel();
             refreshMap();
             refreshPpgPreview();
@@ -447,6 +453,20 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         }
     }
 
+    private void restoreSelectedDeviceRow() {
+        if (selectedDeviceId < 0) {
+            return;
+        }
+        for (int row = 0; row < tableModel.getRowCount(); row++) {
+            DeviceTelemetry device = tableModel.getDeviceAt(row);
+            if (device != null && device.getDeviceId() == selectedDeviceId) {
+                deviceTable.getSelectionModel().setSelectionInterval(row, row);
+                deviceTable.scrollRectToVisible(deviceTable.getCellRect(row, 0, true));
+                return;
+            }
+        }
+    }
+
     private void refreshPpgPreview() {
         DeviceTelemetry selected = devices.get(selectedDeviceId);
         if (selected == null) {
@@ -544,9 +564,25 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     @Override
     public void onTelemetry(DeviceTelemetry telemetry, String rawLine) {
         lastTelemetryAt = telemetry.getReceivedAt();
+        DeviceTelemetry previous = devices.get(telemetry.getDeviceId());
+        if (previous != null) {
+            telemetry = new DeviceTelemetry(
+                telemetry.getDeviceId(),
+                telemetry.getLatitude(),
+                telemetry.getLongitude(),
+                telemetry.getEmergency(),
+                telemetry.getFinger(),
+                telemetry.getBpm(),
+                telemetry.getBattery() >= 0 ? telemetry.getBattery() : previous.getBattery(),
+                telemetry.getGuestName().isEmpty() ? previous.getGuestName() : telemetry.getGuestName(),
+                telemetry.getPpgValue() >= 0 ? telemetry.getPpgValue() : previous.getPpgValue(),
+                telemetry.getReceivedAt()
+            );
+        }
         devices.put(telemetry.getDeviceId(), telemetry);
         rememberPpgSample(telemetry);
         tableModel.setDevices(devices);
+        restoreSelectedDeviceRow();
         appendLog("RX " + rawLine);
         ppgMonitorFrame.addTelemetry(telemetry);
 

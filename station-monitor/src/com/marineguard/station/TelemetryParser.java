@@ -62,23 +62,42 @@ public final class TelemetryParser {
             int emergency = Integer.parseInt(parts[3].trim());
             int finger = Integer.parseInt(parts[4].trim());
             int bpm = Integer.parseInt(parts[5].trim());
-            int battery = parts.length >= 7 ? Integer.parseInt(parts[6].trim()) : -1;
             String guestName = "";
+            int battery = -1;
             int ppgValue = -1;
 
-            if (parts.length >= 8) {
-                String extra = parts[7].trim();
-                if (isInteger(extra) && parts.length == 8) {
-                    ppgValue = Integer.parseInt(extra);
-                } else {
-                    guestName = extra;
+            for (int i = 6; i < parts.length; i++) {
+                String token = parts[i].trim();
+                if (token.isEmpty()) {
+                    continue;
                 }
-            }
 
-            if (parts.length >= 9) {
-                String maybePpg = parts[8].trim();
-                if (isInteger(maybePpg)) {
-                    ppgValue = Integer.parseInt(maybePpg);
+                Integer labeledBattery = tryParseLabeledInt(token, "BAT", "BATTERY", "BATT");
+                if (labeledBattery != null) {
+                    battery = clampBattery(labeledBattery);
+                    continue;
+                }
+
+                Integer labeledPpg = tryParseLabeledInt(token, "PPG");
+                if (labeledPpg != null) {
+                    ppgValue = labeledPpg;
+                    continue;
+                }
+
+                if (!isInteger(token)) {
+                    if (guestName.isEmpty()) {
+                        guestName = token;
+                    }
+                    continue;
+                }
+
+                int numeric = Integer.parseInt(token);
+                if (battery < 0 && numeric >= 0 && numeric <= 100) {
+                    battery = numeric;
+                } else if (ppgValue < 0) {
+                    ppgValue = numeric;
+                } else if (guestName.isEmpty()) {
+                    guestName = token;
                 }
             }
 
@@ -140,5 +159,22 @@ public final class TelemetryParser {
             }
         }
         return true;
+    }
+
+    private static Integer tryParseLabeledInt(String token, String... labels) {
+        String upper = token.toUpperCase();
+        for (String label : labels) {
+            if (upper.startsWith(label + "=") || upper.startsWith(label + ":")) {
+                String value = token.substring(label.length() + 1).trim().replace("%", "");
+                if (isInteger(value)) {
+                    return Integer.parseInt(value);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static int clampBattery(int value) {
+        return Math.max(0, Math.min(100, value));
     }
 }
