@@ -51,7 +51,7 @@ public class DeviceListCellRenderer extends JPanel implements ListCellRenderer<D
         String guest = value.getGuestName().isEmpty() ? "Guest: (unassigned)" : "Guest: " + value.getGuestName();
         titleLabel.setText("ID " + value.getDeviceId());
         guestLabel.setText(guest);
-        bpmLabel.setText(value.getBpm() + " BPM");
+        bpmLabel.setText(value.getFinger() == 0 ? "--" : value.getBpm() + " BPM");
         statusLabel.setText("Status " + value.getStatusText(now));
 
         Color panelColor = AppTheme.PANEL;
@@ -70,7 +70,7 @@ public class DeviceListCellRenderer extends JPanel implements ListCellRenderer<D
         setBackground(panelColor);
         titleLabel.setForeground(AppTheme.TEXT);
         guestLabel.setForeground(value.getGuestName().isEmpty() ? AppTheme.DANGER : AppTheme.TEXT_MUTED);
-        bpmLabel.setForeground(value.getEmergency() > 0 ? AppTheme.DANGER : value.getBpm() > 120 ? AppTheme.WARNING : AppTheme.SUCCESS);
+        bpmLabel.setForeground(value.getFinger() == 0 ? AppTheme.TEXT_MUTED : value.getEmergency() > 0 ? AppTheme.DANGER : value.getBpm() > 120 ? AppTheme.WARNING : AppTheme.SUCCESS);
         statusLabel.setForeground(AppTheme.TEXT);
         assignHintLabel.setForeground(AppTheme.TEXT_MUTED);
         return this;

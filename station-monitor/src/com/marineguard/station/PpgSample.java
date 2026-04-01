@@ -5,12 +5,14 @@ public class PpgSample {
     private final int bpm;
     private final int ppgValue;
     private final boolean rawPpgPresent;
+    private final boolean contactPresent;
 
-    public PpgSample(long timestamp, int bpm, int ppgValue, boolean rawPpgPresent) {
+    public PpgSample(long timestamp, int bpm, int ppgValue, boolean rawPpgPresent, boolean contactPresent) {
         this.timestamp = timestamp;
         this.bpm = bpm;
         this.ppgValue = ppgValue;
         this.rawPpgPresent = rawPpgPresent;
+        this.contactPresent = contactPresent;
     }
 
     public long getTimestamp() {
@@ -27,5 +29,9 @@ public class PpgSample {
 
     public boolean hasRawPpg() {
         return rawPpgPresent;
+    }
+
+    public boolean hasContact() {
+        return contactPresent;
     }
 }

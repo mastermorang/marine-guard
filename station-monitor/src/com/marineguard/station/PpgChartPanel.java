@@ -50,17 +50,28 @@ public class PpgChartPanel extends JPanel {
         g2.drawString(showPpg ? "PPG raw" : "BPM", 12, 16);
         g2.drawString("60s", 54, 16);
 
-        if (samples.size() < 2) {
+        List<PpgSample> plotSamples = new ArrayList<PpgSample>();
+        for (PpgSample sample : samples) {
+            if (!sample.hasContact()) {
+                continue;
+            }
+            if (showPpg && !sample.hasRawPpg()) {
+                continue;
+            }
+            plotSamples.add(sample);
+        }
+
+        if (plotSamples.size() < 2) {
             g2.setColor(AppTheme.TEXT_MUTED);
-            g2.drawString("Waiting for enough samples...", left, top + plotHeight / 2);
+            g2.drawString(samples.isEmpty() ? "Waiting for enough samples..." : "No contact detected", left, top + plotHeight / 2);
             g2.dispose();
             return;
         }
 
         int min = Integer.MAX_VALUE;
         int max = Integer.MIN_VALUE;
-        for (PpgSample sample : samples) {
-            int value = showPpg && sample.hasRawPpg() ? sample.getPpgValue() : sample.getBpm();
+        for (PpgSample sample : plotSamples) {
+            int value = showPpg ? sample.getPpgValue() : sample.getBpm();
             min = Math.min(min, value);
             max = Math.max(max, value);
         }
@@ -69,8 +80,8 @@ public class PpgChartPanel extends JPanel {
             max += 1;
         }
 
-        long firstTs = samples.get(0).getTimestamp();
-        long lastTs = samples.get(samples.size() - 1).getTimestamp();
+        long firstTs = plotSamples.get(0).getTimestamp();
+        long lastTs = plotSamples.get(plotSamples.size() - 1).getTimestamp();
         long span = Math.max(1L, lastTs - firstTs);
 
         g2.setColor(showPpg ? AppTheme.ACCENT : AppTheme.WARNING);
@@ -78,8 +89,8 @@ public class PpgChartPanel extends JPanel {
 
         int prevX = -1;
         int prevY = -1;
-        for (PpgSample sample : samples) {
-            int value = showPpg && sample.hasRawPpg() ? sample.getPpgValue() : sample.getBpm();
+        for (PpgSample sample : plotSamples) {
+            int value = showPpg ? sample.getPpgValue() : sample.getBpm();
             int x = left + (int) ((sample.getTimestamp() - firstTs) * plotWidth / span);
             int y = top + plotHeight - (int) ((long) (value - min) * plotHeight / Math.max(1, max - min));
             if (prevX >= 0) {

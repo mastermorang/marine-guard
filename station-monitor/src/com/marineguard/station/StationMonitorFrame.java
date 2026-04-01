@@ -219,7 +219,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private int severityScore(DeviceTelemetry t) {
         long now = System.currentTimeMillis();
         if (t.getEmergency() > 0) return 5;
-        if (t.getBpm() > 120 || (t.getBpm() > 0 && t.getBpm() < 40)) return 4;
+        if (t.getFinger() > 0 && (t.getBpm() > 120 || (t.getBpm() > 0 && t.getBpm() < 40))) return 4;
         if (t.getFinger() == 0) return 3;
         if (t.isStale(now)) return 2;
         return 0;
@@ -241,19 +241,19 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         if (selected == null) { selectedTitleLabel.setText("No device selected"); selectedGuestLabel.setText("-"); selectedMetaLabel.setText("-"); ppgSummaryLabel.setText("min -- / max -- / avg --"); receiverRefLabel.setText(referenceText()); vitalsGauge.setTelemetry(null); ppgChart.setSamples(new ArrayList<PpgSample>(), false); return; }
         selectedTitleLabel.setText("Device D" + selected.getDeviceId());
         selectedGuestLabel.setText(selected.getGuestName().isEmpty() ? "(unassigned)" : selected.getGuestName());
-        selectedMetaLabel.setText("BPM " + selected.getBpm() + " | " + selected.getStatusText(System.currentTimeMillis()));
+        selectedMetaLabel.setText(selected.getFinger() == 0 ? "No contact | " + selected.getStatusText(System.currentTimeMillis()) : "BPM " + selected.getBpm() + " | " + selected.getStatusText(System.currentTimeMillis()));
         receiverRefLabel.setText(referenceText()); vitalsGauge.setTelemetry(selected);
         List<PpgSample> samples = samplesForDevice(selectedDeviceId); boolean raw = hasRawPpg(samples); ppgChart.setSamples(samples, raw); ppgSummaryLabel.setText(buildPpgSummary(samples, raw));
     }
 
     private String referenceText() { return config.isAutoReceiverLocation() && lastReceiverLocation != null ? String.format("Receiver ref auto %.6f, %.6f", lastReceiverLocation.getLatitude(), lastReceiverLocation.getLongitude()) : String.format("Receiver ref %.6f, %.6f", config.getRefLat(), config.getRefLon()); }
     private List<PpgSample> samplesForDevice(int id) { Deque<PpgSample> h = ppgHistory.get(id); return h == null ? new ArrayList<PpgSample>() : new ArrayList<PpgSample>(h); }
-    private boolean hasRawPpg(List<PpgSample> s) { for (PpgSample p : s) if (p.hasRawPpg()) return true; return false; }
-    private String buildPpgSummary(List<PpgSample> s, boolean raw) { if (s.isEmpty()) return "min -- / max -- / avg --"; int min = Integer.MAX_VALUE, max = Integer.MIN_VALUE; long sum = 0; for (PpgSample p : s) { int v = raw && p.hasRawPpg() ? p.getPpgValue() : p.getBpm(); min = Math.min(min, v); max = Math.max(max, v); sum += v; } return "min " + min + " / max " + max + " / avg " + (sum / s.size()); }
+    private boolean hasRawPpg(List<PpgSample> s) { for (PpgSample p : s) if (p.hasContact() && p.hasRawPpg()) return true; return false; }
+    private String buildPpgSummary(List<PpgSample> s, boolean raw) { if (s.isEmpty()) return "min -- / max -- / avg --"; int min = Integer.MAX_VALUE, max = Integer.MIN_VALUE; long sum = 0; int count = 0; for (PpgSample p : s) { if (!p.hasContact()) continue; int v = raw && p.hasRawPpg() ? p.getPpgValue() : p.getBpm(); min = Math.min(min, v); max = Math.max(max, v); sum += v; count++; } return count == 0 ? "no contact" : "min " + min + " / max " + max + " / avg " + (sum / count); }
 
     private void rememberPpgSample(DeviceTelemetry telemetry) {
         Deque<PpgSample> h = ppgHistory.get(telemetry.getDeviceId()); if (h == null) { h = new ArrayDeque<PpgSample>(); ppgHistory.put(telemetry.getDeviceId(), h); }
-        h.addLast(new PpgSample(telemetry.getReceivedAt(), telemetry.getBpm(), telemetry.getPpgValue(), telemetry.hasRawPpg())); long cutoff = telemetry.getReceivedAt() - 60000L; while (!h.isEmpty() && h.peekFirst().getTimestamp() < cutoff) h.removeFirst();
+        h.addLast(new PpgSample(telemetry.getReceivedAt(), telemetry.getBpm(), telemetry.getPpgValue(), telemetry.hasRawPpg(), telemetry.getFinger() > 0)); long cutoff = telemetry.getReceivedAt() - 60000L; while (!h.isEmpty() && h.peekFirst().getTimestamp() < cutoff) h.removeFirst();
     }
 
     private void updateHeaderStatus() {
@@ -290,8 +290,8 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         if (telemetry.getEmergency() > 0) return EventEntry.Level.EMERGENCY;
         if (telemetry.isStale(now)
                 || telemetry.getFinger() == 0
-                || telemetry.getBpm() > 120
-                || telemetry.getBpm() > 0 && telemetry.getBpm() < 40
+                || telemetry.getFinger() > 0 && telemetry.getBpm() > 120
+                || telemetry.getFinger() > 0 && telemetry.getBpm() > 0 && telemetry.getBpm() < 40
                 || gpsWeak) return EventEntry.Level.WARNING;
         return EventEntry.Level.INFO;
     }
@@ -310,7 +310,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
             warning.append(" (GPS signal weak)");
         }
 
-        return guest + " - BPM " + telemetry.getBpm()
+        return guest + " - " + (telemetry.getFinger() == 0 ? "No contact" : "BPM " + telemetry.getBpm())
                 + ", " + distanceText
                 + ", " + status
                 + warning;
