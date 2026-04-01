@@ -16,6 +16,8 @@ public class SerialReceiverService {
 
         void onTelemetry(DeviceTelemetry telemetry, String rawLine);
 
+        void onReceiverLocation(ReceiverLocation receiverLocation, String rawLine);
+
         void onMessage(String message);
     }
 
@@ -82,6 +84,10 @@ public class SerialReceiverService {
         SwingUtilities.invokeLater(() -> listener.onTelemetry(telemetry, rawLine));
     }
 
+    private void emitReceiverLocation(final ReceiverLocation receiverLocation, final String rawLine) {
+        SwingUtilities.invokeLater(() -> listener.onReceiverLocation(receiverLocation, rawLine));
+    }
+
     private final class LineListener implements SerialPortEventListener {
         @Override
         public void serialEvent(SerialPortEvent event) {
@@ -117,9 +123,11 @@ public class SerialReceiverService {
                     if (line.isEmpty()) {
                         continue;
                     }
-                    DeviceTelemetry telemetry = TelemetryParser.parseLine(line);
-                    if (telemetry != null) {
-                        emitTelemetry(telemetry, line);
+                    TelemetryParser.ParsedLine parsedLine = TelemetryParser.parseLine(line);
+                    if (parsedLine != null && parsedLine.getTelemetry() != null) {
+                        emitTelemetry(parsedLine.getTelemetry(), line);
+                    } else if (parsedLine != null && parsedLine.getReceiverLocation() != null) {
+                        emitReceiverLocation(parsedLine.getReceiverLocation(), line);
                     } else {
                         emitMessage("Ignored line: " + line);
                     }

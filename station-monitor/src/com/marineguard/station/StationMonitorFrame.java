@@ -19,10 +19,10 @@ import javax.swing.ListSelectionModel;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
-import javax.swing.UIManager;
 import javax.swing.WindowConstants;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
@@ -39,25 +39,29 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private final Map<Integer, DeviceTelemetry> devices = new LinkedHashMap<Integer, DeviceTelemetry>();
     private final DeviceTableModel tableModel = new DeviceTableModel();
 
-    private final JLabel bannerLabel = new JLabel("수신기 데이터 대기 중", SwingConstants.LEFT);
-    private final JLabel footerStatusLabel = new JLabel("연결 상태: 대기");
+    private final JLabel bannerLabel = new JLabel("Receiver waiting for data", SwingConstants.LEFT);
+    private final JLabel footerStatusLabel = new JLabel("Link status: idle");
     private final JComboBox<String> portComboBox = new JComboBox<String>();
     private final JComboBox<String> baudComboBox = new JComboBox<String>(new String[]{"9600", "57600", "115200"});
+    private final JComboBox<String> locationModeComboBox = new JComboBox<String>(new String[]{"Manual", "Auto receiver GPS"});
     private final JTextField refLatField = new JTextField(10);
     private final JTextField refLonField = new JTextField(10);
-    private final JButton connectButton = new JButton("연결");
-    private final JButton disconnectButton = new JButton("해제");
+    private final JButton connectButton = new JButton("Connect");
+    private final JButton disconnectButton = new JButton("Disconnect");
     private final JTable deviceTable = new JTable(tableModel);
     private final JTextArea logArea = new JTextArea();
-    private final JLabel detailTitle = new JLabel("선택된 디바이스 없음");
+    private final JLabel detailTitle = new JLabel("No device selected");
     private final JLabel detailVitals = new JLabel("-");
     private final JLabel detailCoords = new JLabel("-");
     private final JLabel detailState = new JLabel("-");
+    private final JLabel receiverSourceLabel = new JLabel("Receiver ref: manual");
+    private final JLabel receiverCoordsLabel = new JLabel("-");
     private final MapCanvas mapCanvas;
 
     private long lastTelemetryAt = 0L;
     private int selectedDeviceId = -1;
     private boolean disconnectWarningShown = false;
+    private ReceiverLocation lastReceiverLocation;
 
     public StationMonitorFrame(AppConfig config) {
         super("Marine Guard Station Monitor");
@@ -69,6 +73,8 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         refreshPorts();
         attachListeners();
         startHeartbeat();
+        applyLocationMode();
+        refreshReceiverReferenceLabels();
     }
 
     private void configureUi() {
@@ -95,14 +101,14 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         deviceTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         deviceTable.setRowHeight(28);
         JScrollPane tableScroll = new JScrollPane(deviceTable);
-        tableScroll.setBorder(BorderFactory.createTitledBorder("디바이스 목록"));
+        tableScroll.setBorder(BorderFactory.createTitledBorder("Devices"));
 
         JPanel rightPanel = new JPanel(new BorderLayout(12, 12));
         rightPanel.setOpaque(false);
         rightPanel.add(createDetailPanel(), BorderLayout.NORTH);
 
         JScrollPane mapScroll = new JScrollPane(mapCanvas);
-        mapScroll.setBorder(BorderFactory.createTitledBorder("상대 위치 맵"));
+        mapScroll.setBorder(BorderFactory.createTitledBorder("Relative map"));
         mapCanvas.setPreferredSize(new Dimension(720, 480));
         rightPanel.add(mapScroll, BorderLayout.CENTER);
 
@@ -111,7 +117,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         logArea.setWrapStyleWord(true);
         JScrollPane logScroll = new JScrollPane(logArea);
         logScroll.setPreferredSize(new Dimension(720, 170));
-        logScroll.setBorder(BorderFactory.createTitledBorder("이벤트 로그"));
+        logScroll.setBorder(BorderFactory.createTitledBorder("Event log"));
         rightPanel.add(logScroll, BorderLayout.SOUTH);
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, tableScroll, rightPanel);
@@ -122,15 +128,16 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     }
 
     private JPanel createDetailPanel() {
-        JPanel panel = new JPanel(new GridLayout(1, 3, 10, 10));
+        JPanel panel = new JPanel(new GridLayout(1, 4, 10, 10));
         panel.setOpaque(false);
-        panel.add(createStatCard("선택 디바이스", detailTitle));
-        panel.add(createStatCard("생체 데이터", detailVitals));
-        panel.add(createStatCard("좌표 / 상태", createTwoLinePanel(detailCoords, detailState)));
+        panel.add(createStatCard("Selected device", detailTitle));
+        panel.add(createStatCard("Vitals", detailVitals));
+        panel.add(createStatCard("Coords / status", createTwoLinePanel(detailCoords, detailState)));
+        panel.add(createStatCard("Receiver reference", createTwoLinePanel(receiverSourceLabel, receiverCoordsLabel)));
         return panel;
     }
 
-    private JPanel createStatCard(String title, java.awt.Component body) {
+    private JPanel createStatCard(String title, Component body) {
         JPanel card = new JPanel(new BorderLayout(6, 6));
         card.setBackground(Color.WHITE);
         card.setBorder(BorderFactory.createCompoundBorder(
@@ -164,7 +171,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         portComboBox.setPreferredSize(new Dimension(130, 30));
         controls.add(portComboBox);
 
-        JButton refreshButton = new JButton("새로고침");
+        JButton refreshButton = new JButton("Refresh");
         refreshButton.addActionListener(event -> refreshPorts());
         controls.add(refreshButton);
 
@@ -173,10 +180,14 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         baudComboBox.setPreferredSize(new Dimension(100, 30));
         controls.add(baudComboBox);
 
-        controls.add(new JLabel("기준 위도"));
+        controls.add(new JLabel("Ref mode"));
+        locationModeComboBox.setPreferredSize(new Dimension(150, 30));
+        controls.add(locationModeComboBox);
+
+        controls.add(new JLabel("Ref lat"));
         controls.add(refLatField);
 
-        controls.add(new JLabel("기준 경도"));
+        controls.add(new JLabel("Ref lon"));
         controls.add(refLonField);
 
         connectButton.addActionListener(event -> connect());
@@ -196,6 +207,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         refLatField.setText(String.valueOf(config.getRefLat()));
         refLonField.setText(String.valueOf(config.getRefLon()));
         baudComboBox.setSelectedItem(String.valueOf(config.getBaudRate()));
+        locationModeComboBox.setSelectedIndex(config.isAutoReceiverLocation() ? 1 : 0);
     }
 
     private void attachListeners() {
@@ -208,6 +220,13 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
             selectedDeviceId = device == null ? -1 : device.getDeviceId();
             refreshDetailPanel();
             refreshMap();
+        });
+
+        locationModeComboBox.addActionListener(event -> {
+            config.setAutoReceiverLocation(isAutoReceiverLocationEnabled());
+            applyLocationMode();
+            persistConfig();
+            refreshReceiverReferenceLabels();
         });
 
         addWindowListener(new WindowAdapter() {
@@ -223,6 +242,16 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private void startHeartbeat() {
         Timer timer = new Timer(1000, event -> refreshConnectionStatus());
         timer.start();
+    }
+
+    private boolean isAutoReceiverLocationEnabled() {
+        return locationModeComboBox.getSelectedIndex() == 1;
+    }
+
+    private void applyLocationMode() {
+        boolean autoMode = isAutoReceiverLocationEnabled();
+        refLatField.setEnabled(!autoMode);
+        refLonField.setEnabled(!autoMode);
     }
 
     private void refreshPorts() {
@@ -244,34 +273,38 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private void connect() {
         String portName = String.valueOf(portComboBox.getSelectedItem());
         if (portName == null || portName.trim().isEmpty() || "null".equals(portName)) {
-            JOptionPane.showMessageDialog(this, "연결할 COM 포트를 선택하세요.", "포트 없음", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Select a COM port first.", "No port", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
         int baudRate;
-        double refLat;
-        double refLon;
         try {
             baudRate = Integer.parseInt(String.valueOf(baudComboBox.getSelectedItem()).trim());
-            refLat = Double.parseDouble(refLatField.getText().trim());
-            refLon = Double.parseDouble(refLonField.getText().trim());
+            if (!isAutoReceiverLocationEnabled()) {
+                double refLat = Double.parseDouble(refLatField.getText().trim());
+                double refLon = Double.parseDouble(refLonField.getText().trim());
+                config.setRefLat(refLat);
+                config.setRefLon(refLon);
+                mapCanvas.setReferencePoint(refLat, refLon);
+            }
         } catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(this, "Baud rate 또는 기준 좌표 값이 잘못되었습니다.", "입력 오류", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Invalid baud rate or reference coordinates.", "Input error", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
         config.setPortName(portName);
         config.setBaudRate(baudRate);
-        config.setRefLat(refLat);
-        config.setRefLon(refLon);
-        mapCanvas.setReferencePoint(refLat, refLon);
+        config.setAutoReceiverLocation(isAutoReceiverLocationEnabled());
         persistConfig();
 
         try {
             serialService.connect(portName, baudRate);
             appendLog("Connected to " + portName + " @ " + baudRate);
+            if (isAutoReceiverLocationEnabled()) {
+                appendLog("Waiting for receiver GPS lines to update reference point.");
+            }
         } catch (SerialPortException ex) {
-            JOptionPane.showMessageDialog(this, "시리얼 포트 연결 실패: " + ex.getMessage(), "연결 실패", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Serial connect failed: " + ex.getMessage(), "Connect failed", JOptionPane.ERROR_MESSAGE);
             appendLog("Connect failed: " + ex.getMessage());
         }
     }
@@ -294,31 +327,32 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
 
         if (serialService.isConnected() && recentData) {
             disconnectWarningShown = false;
-            bannerLabel.setText("수신기 연결됨: " + serialService.getConnectedPortName() + " / 실시간 데이터 수신 중");
+            bannerLabel.setText("Receiver connected: " + serialService.getConnectedPortName() + " / live telemetry");
             bannerLabel.setBackground(new Color(220, 252, 231));
             bannerLabel.setForeground(new Color(22, 101, 52));
-            footerStatusLabel.setText("연결 상태: 정상 수신");
+            footerStatusLabel.setText("Link status: live");
         } else if (serialService.isConnected()) {
-            bannerLabel.setText("수신기 연결됨: " + serialService.getConnectedPortName() + " / 데이터 대기 중");
+            bannerLabel.setText("Receiver connected: " + serialService.getConnectedPortName() + " / waiting for telemetry");
             bannerLabel.setBackground(new Color(254, 249, 195));
             bannerLabel.setForeground(new Color(133, 77, 14));
-            footerStatusLabel.setText("연결 상태: 포트 연결됨, 데이터 없음");
+            footerStatusLabel.setText("Link status: port open, no telemetry");
         } else {
-            bannerLabel.setText("수신기 데이터 대기 중");
+            bannerLabel.setText("Receiver waiting for data");
             bannerLabel.setBackground(new Color(230, 238, 247));
             bannerLabel.setForeground(new Color(18, 52, 86));
-            footerStatusLabel.setText("연결 상태: 대기");
+            footerStatusLabel.setText("Link status: idle");
         }
 
         tableModel.fireTableDataChanged();
         refreshDetailPanel();
         refreshMap();
+        refreshReceiverReferenceLabels();
     }
 
     private void refreshDetailPanel() {
         DeviceTelemetry selected = devices.get(selectedDeviceId);
         if (selected == null) {
-            detailTitle.setText("선택된 디바이스 없음");
+            detailTitle.setText("No device selected");
             detailVitals.setText("-");
             detailCoords.setText("-");
             detailState.setText("-");
@@ -326,9 +360,25 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         }
 
         detailTitle.setText("D" + selected.getDeviceId() + formatGuest(selected.getGuestName()));
-        detailVitals.setText("BPM " + selected.getBpm() + " / 배터리 " + (selected.getBattery() >= 0 ? selected.getBattery() + "%" : "-"));
+        detailVitals.setText("BPM " + selected.getBpm() + " / Battery " + (selected.getBattery() >= 0 ? selected.getBattery() + "%" : "-"));
         detailCoords.setText(String.format("%.6f, %.6f", selected.getLatitude(), selected.getLongitude()));
-        detailState.setText("상태 " + selected.getStatusText(System.currentTimeMillis()) + " / EMG " + selected.getEmergency() + " / Finger " + selected.getFinger());
+        detailState.setText("State " + selected.getStatusText(System.currentTimeMillis()) + " / EMG " + selected.getEmergency() + " / Finger " + selected.getFinger());
+    }
+
+    private void refreshReceiverReferenceLabels() {
+        if (isAutoReceiverLocationEnabled()) {
+            if (lastReceiverLocation == null) {
+                receiverSourceLabel.setText("Receiver ref: auto / waiting");
+                receiverCoordsLabel.setText(String.format("Fallback %.6f, %.6f", config.getRefLat(), config.getRefLon()));
+            } else {
+                String source = lastReceiverLocation.getSource().isEmpty() ? "auto" : lastReceiverLocation.getSource();
+                receiverSourceLabel.setText("Receiver ref: auto / " + source);
+                receiverCoordsLabel.setText(String.format("%.6f, %.6f", lastReceiverLocation.getLatitude(), lastReceiverLocation.getLongitude()));
+            }
+        } else {
+            receiverSourceLabel.setText("Receiver ref: manual");
+            receiverCoordsLabel.setText(String.format("%.6f, %.6f", config.getRefLat(), config.getRefLon()));
+        }
     }
 
     private String formatGuest(String guestName) {
@@ -362,12 +412,12 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         if (!"user request".equals(reason) && !"window closing".equals(reason) && !"reconnect".equals(reason) && !disconnectWarningShown) {
             disconnectWarningShown = true;
             SwingUtilities.invokeLater(() ->
-                    JOptionPane.showMessageDialog(
-                            this,
-                            "수신기 연결이 해제되었습니다.\n사유: " + reason,
-                            "연결 끊김",
-                            JOptionPane.WARNING_MESSAGE
-                    )
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Receiver link dropped.\nReason: " + reason,
+                    "Disconnected",
+                    JOptionPane.WARNING_MESSAGE
+                )
             );
         }
     }
@@ -387,6 +437,24 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         refreshDetailPanel();
         refreshMap();
         refreshConnectionStatus();
+    }
+
+    @Override
+    public void onReceiverLocation(ReceiverLocation receiverLocation, String rawLine) {
+        lastReceiverLocation = receiverLocation;
+        appendLog("RX-REF " + rawLine);
+
+        if (isAutoReceiverLocationEnabled()) {
+            config.setRefLat(receiverLocation.getLatitude());
+            config.setRefLon(receiverLocation.getLongitude());
+            refLatField.setText(String.valueOf(receiverLocation.getLatitude()));
+            refLonField.setText(String.valueOf(receiverLocation.getLongitude()));
+            mapCanvas.setReferencePoint(receiverLocation.getLatitude(), receiverLocation.getLongitude());
+            persistConfig();
+        }
+
+        refreshReceiverReferenceLabels();
+        refreshMap();
     }
 
     @Override

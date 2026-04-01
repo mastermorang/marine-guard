@@ -1,10 +1,36 @@
 package com.marineguard.station;
 
 public final class TelemetryParser {
+    public static final class ParsedLine {
+        private final DeviceTelemetry telemetry;
+        private final ReceiverLocation receiverLocation;
+
+        private ParsedLine(DeviceTelemetry telemetry, ReceiverLocation receiverLocation) {
+            this.telemetry = telemetry;
+            this.receiverLocation = receiverLocation;
+        }
+
+        public static ParsedLine forTelemetry(DeviceTelemetry telemetry) {
+            return new ParsedLine(telemetry, null);
+        }
+
+        public static ParsedLine forReceiverLocation(ReceiverLocation receiverLocation) {
+            return new ParsedLine(null, receiverLocation);
+        }
+
+        public DeviceTelemetry getTelemetry() {
+            return telemetry;
+        }
+
+        public ReceiverLocation getReceiverLocation() {
+            return receiverLocation;
+        }
+    }
+
     private TelemetryParser() {
     }
 
-    public static DeviceTelemetry parseLine(String line) {
+    public static ParsedLine parseLine(String line) {
         if (line == null) {
             return null;
         }
@@ -12,6 +38,11 @@ public final class TelemetryParser {
         String trimmed = line.trim();
         if (trimmed.isEmpty()) {
             return null;
+        }
+
+        ParsedLine receiverLocation = parseReceiverLocation(trimmed);
+        if (receiverLocation != null) {
+            return receiverLocation;
         }
 
         String[] parts = trimmed.split(",");
@@ -34,16 +65,43 @@ public final class TelemetryParser {
             int battery = parts.length >= 7 ? Integer.parseInt(parts[6].trim()) : -1;
             String guestName = parts.length >= 8 ? parts[7].trim() : "";
 
-            return new DeviceTelemetry(
-                    deviceId,
-                    latitude,
-                    longitude,
-                    emergency,
-                    finger,
-                    bpm,
-                    battery,
-                    guestName,
-                    System.currentTimeMillis()
+            return ParsedLine.forTelemetry(new DeviceTelemetry(
+                deviceId,
+                latitude,
+                longitude,
+                emergency,
+                finger,
+                bpm,
+                battery,
+                guestName,
+                System.currentTimeMillis()
+            ));
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private static ParsedLine parseReceiverLocation(String line) {
+        String[] parts = line.split(",");
+        if (parts.length < 3) {
+            return null;
+        }
+
+        String header = parts[0].trim().toUpperCase();
+        if (!("RX".equals(header) || "RECEIVER".equals(header) || "BASE".equals(header) || "R".equals(header))) {
+            return null;
+        }
+
+        try {
+            String latToken = parts[1].trim();
+            if (latToken.startsWith("$M") || latToken.startsWith("$R")) {
+                latToken = latToken.substring(2);
+            }
+            double latitude = Double.parseDouble(latToken);
+            double longitude = Double.parseDouble(parts[2].trim());
+            String source = parts.length >= 4 ? parts[3].trim() : header;
+            return ParsedLine.forReceiverLocation(
+                new ReceiverLocation(latitude, longitude, source, System.currentTimeMillis())
             );
         } catch (NumberFormatException ex) {
             return null;

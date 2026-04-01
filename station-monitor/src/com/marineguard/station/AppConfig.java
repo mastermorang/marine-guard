@@ -13,6 +13,7 @@ public class AppConfig {
     private int baudRate = 115200;
     private double refLat = 35.097012d;
     private double refLon = 129.994446d;
+    private boolean autoReceiverLocation = false;
 
     public static AppConfig load() {
         AppConfig config = new AppConfig();
@@ -28,6 +29,9 @@ public class AppConfig {
             config.baudRate = Integer.parseInt(properties.getProperty("baudRate", String.valueOf(config.baudRate)));
             config.refLat = Double.parseDouble(properties.getProperty("refLat", String.valueOf(config.refLat)));
             config.refLon = Double.parseDouble(properties.getProperty("refLon", String.valueOf(config.refLon)));
+            config.autoReceiverLocation = Boolean.parseBoolean(
+                    properties.getProperty("autoReceiverLocation", String.valueOf(config.autoReceiverLocation))
+            );
         } catch (Exception ignored) {
             return config;
         }
@@ -40,6 +44,7 @@ public class AppConfig {
         properties.setProperty("baudRate", String.valueOf(baudRate));
         properties.setProperty("refLat", String.valueOf(refLat));
         properties.setProperty("refLon", String.valueOf(refLon));
+        properties.setProperty("autoReceiverLocation", String.valueOf(autoReceiverLocation));
         try (FileOutputStream output = new FileOutputStream(getConfigFile())) {
             properties.store(output, "Marine Guard Station Monitor");
         }
@@ -79,5 +84,13 @@ public class AppConfig {
 
     public void setRefLon(double refLon) {
         this.refLon = refLon;
+    }
+
+    public boolean isAutoReceiverLocation() {
+        return autoReceiverLocation;
+    }
+
+    public void setAutoReceiverLocation(boolean autoReceiverLocation) {
+        this.autoReceiverLocation = autoReceiverLocation;
     }
 }

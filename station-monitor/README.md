@@ -9,6 +9,7 @@ It is intended to replace the browser-first workflow for field operation.
 
 - Connects directly to the receiver over a serial COM port
 - Parses live device telemetry from the existing wearable protocol
+- Supports both manual receiver coordinates and automatic receiver GPS tracking
 - Shows receiver connection state and last data time
 - Lists connected devices and their vital data
 - Draws simple relative positions on a local map canvas
@@ -28,6 +29,20 @@ Extended format:
 1,$M35.097012,129.994446,0,1,088,77,Guest 1
 ```
 
+Receiver reference line for automatic tracking:
+
+```text
+RX,$M35.097500,129.994900,receiver-gps
+```
+
+Also accepted:
+
+```text
+RECEIVER,$M35.097500,129.994900
+BASE,$M35.097500,129.994900
+R,$M35.097500,129.994900
+```
+
 Fields:
 
 1. Device ID
@@ -38,6 +53,21 @@ Fields:
 6. BPM
 7. Battery percent (optional)
 8. Guest name (optional)
+
+Receiver GPS fields:
+
+1. Receiver header: `RX`, `RECEIVER`, `BASE`, or `R`
+2. Receiver latitude with optional `$M` or `$R` prefix
+3. Receiver longitude
+4. Source label (optional)
+
+## Reference point modes
+
+- `Manual`: the operator enters and saves the receiver reference coordinates
+- `Auto receiver GPS`: the app waits for receiver GPS lines and updates the map
+  reference automatically
+
+If automatic GPS data is missing, the last saved coordinates remain as the fallback.
 
 ## Build
 
