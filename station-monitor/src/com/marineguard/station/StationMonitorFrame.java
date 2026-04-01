@@ -30,13 +30,19 @@ import java.awt.GridLayout;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public class StationMonitorFrame extends JFrame implements SerialReceiverService.Listener {
     private final AppConfig config;
     private final SerialReceiverService serialService;
     private final Map<Integer, DeviceTelemetry> devices = new LinkedHashMap<Integer, DeviceTelemetry>();
+    private final Map<Integer, Deque<PpgSample>> ppgHistoryByDevice = new HashMap<Integer, Deque<PpgSample>>();
     private final DeviceTableModel tableModel = new DeviceTableModel();
 
     private final JLabel bannerLabel = new JLabel("Receiver waiting for data", SwingConstants.LEFT);
@@ -57,6 +63,12 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private final JLabel detailState = new JLabel("-");
     private final JLabel receiverSourceLabel = new JLabel("Receiver ref: manual");
     private final JLabel receiverCoordsLabel = new JLabel("-");
+    private final JLabel ppgPreviewTitleLabel = new JLabel("No device selected");
+    private final JLabel ppgPreviewBpmLabel = new JLabel("--");
+    private final JLabel ppgPreviewRawLabel = new JLabel("--");
+    private final JLabel ppgPreviewModeLabel = new JLabel("Graph: BPM trend");
+    private final JLabel ppgPreviewStatsLabel = new JLabel("min -- / max -- / avg --");
+    private final PpgChartPanel ppgPreviewChart = new PpgChartPanel();
     private final MapCanvas mapCanvas;
     private final PpgMonitorFrame ppgMonitorFrame = new PpgMonitorFrame();
 
@@ -107,7 +119,11 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
 
         JPanel rightPanel = new JPanel(new BorderLayout(12, 12));
         rightPanel.setOpaque(false);
-        rightPanel.add(createDetailPanel(), BorderLayout.NORTH);
+        JPanel topPanel = new JPanel(new BorderLayout(12, 12));
+        topPanel.setOpaque(false);
+        topPanel.add(createDetailPanel(), BorderLayout.NORTH);
+        topPanel.add(createPpgPreviewPanel(), BorderLayout.CENTER);
+        rightPanel.add(topPanel, BorderLayout.NORTH);
 
         JScrollPane mapScroll = new JScrollPane(mapCanvas);
         mapScroll.setBorder(BorderFactory.createTitledBorder("Relative map"));
@@ -136,6 +152,29 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         panel.add(createStatCard("Vitals", detailVitals));
         panel.add(createStatCard("Coords / status", createTwoLinePanel(detailCoords, detailState)));
         panel.add(createStatCard("Receiver reference", createTwoLinePanel(receiverSourceLabel, receiverCoordsLabel)));
+        return panel;
+    }
+
+    private JPanel createPpgPreviewPanel() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setOpaque(false);
+        panel.setPreferredSize(new Dimension(0, 260));
+
+        JPanel statsGrid = new JPanel(new GridLayout(1, 4, 10, 10));
+        statsGrid.setOpaque(false);
+        statsGrid.add(createStatCard("PPG target", ppgPreviewTitleLabel));
+        statsGrid.add(createStatCard("Current BPM", ppgPreviewBpmLabel));
+        statsGrid.add(createStatCard("Current raw PPG", ppgPreviewRawLabel));
+        statsGrid.add(createStatCard("PPG summary", createTwoLinePanel(ppgPreviewModeLabel, ppgPreviewStatsLabel)));
+
+        ppgPreviewChart.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(221, 229, 239)),
+                BorderFactory.createEmptyBorder(8, 8, 8, 8)
+        ));
+        ppgPreviewChart.setPreferredSize(new Dimension(0, 170));
+
+        panel.add(statsGrid, BorderLayout.NORTH);
+        panel.add(ppgPreviewChart, BorderLayout.CENTER);
         return panel;
     }
 
@@ -224,6 +263,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
             selectedDeviceId = device == null ? -1 : device.getDeviceId();
             refreshDetailPanel();
             refreshMap();
+            refreshPpgPreview();
             ppgMonitorFrame.setSelectedDevice(device);
         });
 
@@ -394,6 +434,72 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         mapCanvas.setDevices(devices.values(), selectedDeviceId);
     }
 
+    private void rememberPpgSample(DeviceTelemetry telemetry) {
+        Deque<PpgSample> history = ppgHistoryByDevice.get(telemetry.getDeviceId());
+        if (history == null) {
+            history = new ArrayDeque<PpgSample>();
+            ppgHistoryByDevice.put(telemetry.getDeviceId(), history);
+        }
+        history.addLast(new PpgSample(telemetry.getReceivedAt(), telemetry.getBpm(), telemetry.getPpgValue()));
+        long cutoff = telemetry.getReceivedAt() - 60000L;
+        while (!history.isEmpty() && history.peekFirst().getTimestamp() < cutoff) {
+            history.removeFirst();
+        }
+    }
+
+    private void refreshPpgPreview() {
+        DeviceTelemetry selected = devices.get(selectedDeviceId);
+        if (selected == null) {
+            ppgPreviewTitleLabel.setText("No device selected");
+            ppgPreviewBpmLabel.setText("--");
+            ppgPreviewRawLabel.setText("--");
+            ppgPreviewModeLabel.setText("Graph: BPM trend");
+            ppgPreviewStatsLabel.setText("min -- / max -- / avg --");
+            ppgPreviewChart.setSamples(new ArrayList<PpgSample>(), false);
+            return;
+        }
+
+        String suffix = selected.getGuestName().isEmpty() ? "" : " (" + selected.getGuestName() + ")";
+        ppgPreviewTitleLabel.setText("D" + selected.getDeviceId() + suffix);
+
+        Deque<PpgSample> history = ppgHistoryByDevice.get(selectedDeviceId);
+        List<PpgSample> samples = history == null ? new ArrayList<PpgSample>() : new ArrayList<PpgSample>(history);
+        boolean showRawPpg = hasRawPpg(samples);
+
+        ppgPreviewBpmLabel.setText(selected.getBpm() + " bpm");
+        ppgPreviewRawLabel.setText(selected.getPpgValue() >= 0 ? String.valueOf(selected.getPpgValue()) : "n/a");
+        ppgPreviewModeLabel.setText(showRawPpg ? "Graph: raw PPG" : "Graph: BPM trend");
+
+        if (samples.isEmpty()) {
+            ppgPreviewStatsLabel.setText("min -- / max -- / avg --");
+            ppgPreviewChart.setSamples(samples, showRawPpg);
+            return;
+        }
+
+        int min = Integer.MAX_VALUE;
+        int max = Integer.MIN_VALUE;
+        long sum = 0L;
+        int count = 0;
+        for (PpgSample sample : samples) {
+            int value = showRawPpg && sample.getPpgValue() >= 0 ? sample.getPpgValue() : sample.getBpm();
+            min = Math.min(min, value);
+            max = Math.max(max, value);
+            sum += value;
+            count++;
+        }
+        ppgPreviewStatsLabel.setText("min " + min + " / max " + max + " / avg " + (count == 0 ? "--" : sum / count));
+        ppgPreviewChart.setSamples(samples, showRawPpg);
+    }
+
+    private boolean hasRawPpg(List<PpgSample> samples) {
+        for (PpgSample sample : samples) {
+            if (sample.getPpgValue() >= 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void openPpgMonitor() {
         DeviceTelemetry selected = devices.get(selectedDeviceId);
         ppgMonitorFrame.setSelectedDevice(selected);
@@ -439,6 +545,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     public void onTelemetry(DeviceTelemetry telemetry, String rawLine) {
         lastTelemetryAt = telemetry.getReceivedAt();
         devices.put(telemetry.getDeviceId(), telemetry);
+        rememberPpgSample(telemetry);
         tableModel.setDevices(devices);
         appendLog("RX " + rawLine);
         ppgMonitorFrame.addTelemetry(telemetry);
@@ -450,6 +557,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
 
         refreshDetailPanel();
         refreshMap();
+        refreshPpgPreview();
         ppgMonitorFrame.setSelectedDevice(devices.get(selectedDeviceId));
         refreshConnectionStatus();
     }
