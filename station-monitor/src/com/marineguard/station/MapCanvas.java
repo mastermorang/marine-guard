@@ -13,11 +13,15 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.Map;
 
 public class MapCanvas extends JPanel {
     private double refLat;
     private double refLon;
     private Collection<DeviceTelemetry> devices;
+    private Map<Integer, Deque<DeviceTrackPoint>> trackHistory;
     private int selectedDeviceId = -1;
     private double zoomFactor = 1.8d;
     private int panX;
@@ -28,6 +32,7 @@ public class MapCanvas extends JPanel {
         this.refLat = refLat;
         this.refLon = refLon;
         this.devices = java.util.Collections.emptyList();
+        this.trackHistory = Collections.emptyMap();
         setBackground(AppTheme.PANEL);
         addMouseWheelListener(new ZoomListener());
         DragHandler dragHandler = new DragHandler();
@@ -44,6 +49,11 @@ public class MapCanvas extends JPanel {
     public void setDevices(Collection<DeviceTelemetry> devices, int selectedDeviceId) {
         this.devices = devices == null ? java.util.Collections.<DeviceTelemetry>emptyList() : devices;
         this.selectedDeviceId = selectedDeviceId;
+        repaint();
+    }
+
+    public void setTrackHistory(Map<Integer, Deque<DeviceTrackPoint>> trackHistory) {
+        this.trackHistory = trackHistory == null ? Collections.<Integer, Deque<DeviceTrackPoint>>emptyMap() : trackHistory;
         repaint();
     }
 
@@ -78,6 +88,8 @@ public class MapCanvas extends JPanel {
         g2.drawString(String.format("Zoom x%.1f", zoomFactor / 1.8d), width - 125, height - 28);
         g2.drawString(String.format("Scale %.0fm", 100d / zoomFactor), width - 125, height - 12);
 
+        drawTracks(g2, centerX, centerY);
+
         for (DeviceTelemetry device : devices) {
             double[] offset = ReceiverLocation.calculateOffsetMeters(refLat, refLon, device.getLatitude(), device.getLongitude());
             int x = centerX + (int) Math.round(offset[0] * zoomFactor);
@@ -106,6 +118,39 @@ public class MapCanvas extends JPanel {
         }
 
         g2.dispose();
+    }
+
+    private void drawTracks(Graphics2D g2, int centerX, int centerY) {
+        for (Map.Entry<Integer, Deque<DeviceTrackPoint>> entry : trackHistory.entrySet()) {
+            Deque<DeviceTrackPoint> points = entry.getValue();
+            if (points == null || points.size() < 2) {
+                continue;
+            }
+
+            boolean selected = entry.getKey() == selectedDeviceId;
+            Color base = selected ? AppTheme.SELECTED : new Color(93, 125, 168);
+            Color lineColor = new Color(base.getRed(), base.getGreen(), base.getBlue(), selected ? 220 : 110);
+            g2.setColor(lineColor);
+            g2.setStroke(new BasicStroke(selected ? 3.2f : 1.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+
+            DeviceTrackPoint previous = null;
+            for (DeviceTrackPoint point : points) {
+                if (!ReceiverLocation.hasGpsFix(point.getLatitude(), point.getLongitude())) {
+                    previous = null;
+                    continue;
+                }
+                double[] offset = ReceiverLocation.calculateOffsetMeters(refLat, refLon, point.getLatitude(), point.getLongitude());
+                int x = centerX + (int) Math.round(offset[0] * zoomFactor);
+                int y = centerY - (int) Math.round(offset[1] * zoomFactor);
+                if (previous != null) {
+                    double[] prevOffset = ReceiverLocation.calculateOffsetMeters(refLat, refLon, previous.getLatitude(), previous.getLongitude());
+                    int prevX = centerX + (int) Math.round(prevOffset[0] * zoomFactor);
+                    int prevY = centerY - (int) Math.round(prevOffset[1] * zoomFactor);
+                    g2.drawLine(prevX, prevY, x, y);
+                }
+                previous = point;
+            }
+        }
     }
 
     private Color statusColor(DeviceTelemetry device) {

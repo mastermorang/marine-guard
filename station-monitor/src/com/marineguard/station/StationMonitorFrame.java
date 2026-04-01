@@ -17,10 +17,14 @@ import java.util.*;
 import java.util.List;
 
 public class StationMonitorFrame extends JFrame implements SerialReceiverService.Listener {
+    private static final long TRACK_RETENTION_MS = 5 * 60 * 1000L;
+    private static final double TRACK_MIN_MOVE_METERS = 2.0d;
+
     private final AppConfig config;
     private final SerialReceiverService serialService;
     private final Map<Integer, DeviceTelemetry> devices = new LinkedHashMap<Integer, DeviceTelemetry>();
     private final Map<Integer, Deque<PpgSample>> ppgHistory = new HashMap<Integer, Deque<PpgSample>>();
+    private final Map<Integer, Deque<DeviceTrackPoint>> trackHistory = new HashMap<Integer, Deque<DeviceTrackPoint>>();
     private final List<EventEntry> eventEntries = new ArrayList<EventEntry>();
     private final DefaultListModel<DeviceTelemetry> deviceListModel = new DefaultListModel<DeviceTelemetry>();
     private final JList<DeviceTelemetry> deviceList = new JList<DeviceTelemetry>(deviceListModel);
@@ -230,7 +234,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private void selectDevice(int deviceId, boolean updateListSelection) {
         DeviceTelemetry telemetry = devices.get(deviceId); if (telemetry == null) return;
         selectedDeviceId = deviceId; if (updateListSelection) restoreSelectedDeviceSelection();
-        refreshSelectedPanels(); mapCanvas.setDevices(devices.values(), selectedDeviceId); ppgMonitorFrame.setSelectedDevice(telemetry);
+        refreshSelectedPanels(); mapCanvas.setDevices(devices.values(), selectedDeviceId); mapCanvas.setTrackHistory(trackHistory); ppgMonitorFrame.setSelectedDevice(telemetry);
     }
 
     private void refreshSelectedPanels() {
@@ -251,6 +255,46 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private void rememberPpgSample(DeviceTelemetry telemetry) {
         Deque<PpgSample> h = ppgHistory.get(telemetry.getDeviceId()); if (h == null) { h = new ArrayDeque<PpgSample>(); ppgHistory.put(telemetry.getDeviceId(), h); }
         h.addLast(new PpgSample(telemetry.getReceivedAt(), telemetry.getBpm(), telemetry.getPpgValue(), telemetry.hasRawPpg(), true)); long cutoff = telemetry.getReceivedAt() - 60000L; while (!h.isEmpty() && h.peekFirst().getTimestamp() < cutoff) h.removeFirst();
+    }
+
+    private void rememberTrackPoint(DeviceTelemetry telemetry) {
+        if (!ReceiverLocation.hasGpsFix(telemetry.getLatitude(), telemetry.getLongitude())) {
+            return;
+        }
+        Deque<DeviceTrackPoint> history = trackHistory.get(telemetry.getDeviceId());
+        if (history == null) {
+            history = new ArrayDeque<DeviceTrackPoint>();
+            trackHistory.put(telemetry.getDeviceId(), history);
+        }
+
+        DeviceTrackPoint latest = history.peekLast();
+        if (latest != null) {
+            double distance = ReceiverLocation.calculateDistance(
+                    latest.getLatitude(),
+                    latest.getLongitude(),
+                    telemetry.getLatitude(),
+                    telemetry.getLongitude()
+            );
+            if (distance < TRACK_MIN_MOVE_METERS) {
+                trimTrackHistory(history, telemetry.getReceivedAt());
+                return;
+            }
+        }
+
+        history.addLast(new DeviceTrackPoint(
+                telemetry.getDeviceId(),
+                telemetry.getLatitude(),
+                telemetry.getLongitude(),
+                telemetry.getReceivedAt()
+        ));
+        trimTrackHistory(history, telemetry.getReceivedAt());
+    }
+
+    private void trimTrackHistory(Deque<DeviceTrackPoint> history, long now) {
+        long cutoff = now - TRACK_RETENTION_MS;
+        while (!history.isEmpty() && history.peekFirst().getTimestamp() < cutoff) {
+            history.removeFirst();
+        }
     }
 
     private void updateHeaderStatus() {
@@ -320,7 +364,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
 
     @Override public void onConnected(String portName) { disconnectWarningShown = false; appendEvent(EventEntry.Level.INFO, "Receiver connected on " + portName); updateHeaderStatus(); }
     @Override public void onDisconnected(String reason) { appendEvent(EventEntry.Level.WARNING, "Receiver disconnected: " + reason); updateHeaderStatus(); if (!"user request".equals(reason) && !"window closing".equals(reason) && !"reconnect".equals(reason) && !disconnectWarningShown) { disconnectWarningShown = true; SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Receiver link dropped.\nReason: " + reason, "Disconnected", JOptionPane.WARNING_MESSAGE)); } }
-    @Override public void onTelemetry(DeviceTelemetry telemetry, String rawLine) { lastTelemetryAt = telemetry.getReceivedAt(); DeviceTelemetry prev = devices.get(telemetry.getDeviceId()); if (prev != null) telemetry = new DeviceTelemetry(telemetry.getDeviceId(), telemetry.getLatitude(), telemetry.getLongitude(), telemetry.getEmergency(), telemetry.getFinger(), telemetry.getBpm(), telemetry.getBattery() >= 0 ? telemetry.getBattery() : prev.getBattery(), telemetry.getGuestName().isEmpty() ? prev.getGuestName() : telemetry.getGuestName(), telemetry.getPpgValue(), telemetry.hasRawPpg(), telemetry.getReceivedAt()); devices.put(telemetry.getDeviceId(), telemetry); rememberPpgSample(telemetry); refreshDeviceList(); if (selectedDeviceId < 0 || !devices.containsKey(selectedDeviceId)) selectedDeviceId = telemetry.getDeviceId(); selectDevice(selectedDeviceId, true); mapCanvas.setDevices(devices.values(), selectedDeviceId); ppgMonitorFrame.addTelemetry(telemetry); EventEntry.Level level = classify(telemetry); String message = describe(telemetry); appendTelemetryEvent(telemetry, level, message); updateHeaderStatus(); }
+    @Override public void onTelemetry(DeviceTelemetry telemetry, String rawLine) { lastTelemetryAt = telemetry.getReceivedAt(); DeviceTelemetry prev = devices.get(telemetry.getDeviceId()); if (prev != null) telemetry = new DeviceTelemetry(telemetry.getDeviceId(), telemetry.getLatitude(), telemetry.getLongitude(), telemetry.getEmergency(), telemetry.getFinger(), telemetry.getBpm(), telemetry.getBattery() >= 0 ? telemetry.getBattery() : prev.getBattery(), telemetry.getGuestName().isEmpty() ? prev.getGuestName() : telemetry.getGuestName(), telemetry.getPpgValue(), telemetry.hasRawPpg(), telemetry.getReceivedAt()); devices.put(telemetry.getDeviceId(), telemetry); rememberPpgSample(telemetry); rememberTrackPoint(telemetry); refreshDeviceList(); if (selectedDeviceId < 0 || !devices.containsKey(selectedDeviceId)) selectedDeviceId = telemetry.getDeviceId(); selectDevice(selectedDeviceId, true); mapCanvas.setDevices(devices.values(), selectedDeviceId); mapCanvas.setTrackHistory(trackHistory); ppgMonitorFrame.addTelemetry(telemetry); EventEntry.Level level = classify(telemetry); String message = describe(telemetry); appendTelemetryEvent(telemetry, level, message); updateHeaderStatus(); }
     @Override public void onReceiverLocation(ReceiverLocation r, String rawLine) { lastReceiverLocation = r; appendEvent(EventEntry.Level.INFO, "Receiver GPS updated: " + r.getSource()); if (config.isAutoReceiverLocation()) { config.setRefLat(r.getLatitude()); config.setRefLon(r.getLongitude()); refLatField.setText(String.valueOf(r.getLatitude())); refLonField.setText(String.valueOf(r.getLongitude())); mapCanvas.setReferencePoint(r.getLatitude(), r.getLongitude()); persistConfig(); } refreshReceiverReferenceLabel(); }
     @Override public void onMessage(String message) { appendEvent(EventEntry.Level.INFO, message); }
 }
