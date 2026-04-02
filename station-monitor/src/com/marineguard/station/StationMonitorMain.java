@@ -9,10 +9,13 @@ public final class StationMonitorMain {
 
     public static void main(String[] args) {
         AppTheme.install();
+        DisplayAwakeManager displayAwakeManager = new DisplayAwakeManager();
+        displayAwakeManager.start();
+        Runtime.getRuntime().addShutdownHook(new Thread(displayAwakeManager::stop, "display-awake-stop"));
 
         SwingUtilities.invokeLater(() -> {
             AppConfig config = AppConfig.load();
-            StationMonitorFrame frame = new StationMonitorFrame(config);
+            StationMonitorFrame frame = new StationMonitorFrame(config, displayAwakeManager);
             frame.setLocationRelativeTo(null);
             frame.setVisible(true);
         });

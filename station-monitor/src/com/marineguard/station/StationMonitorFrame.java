@@ -21,6 +21,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private static final double TRACK_MIN_MOVE_METERS = 2.0d;
 
     private final AppConfig config;
+    private final DisplayAwakeManager displayAwakeManager;
     private final SerialReceiverService serialService;
     private final Map<Integer, DeviceTelemetry> devices = new LinkedHashMap<Integer, DeviceTelemetry>();
     private final Map<Integer, Deque<PpgSample>> ppgHistory = new HashMap<Integer, Deque<PpgSample>>();
@@ -67,9 +68,10 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
     private boolean fullscreen;
     private ReceiverLocation lastReceiverLocation;
 
-    public StationMonitorFrame(AppConfig config) {
+    public StationMonitorFrame(AppConfig config, DisplayAwakeManager displayAwakeManager) {
         super("Marine Guard Station Monitor");
         this.config = config;
+        this.displayAwakeManager = displayAwakeManager;
         this.serialService = new SerialReceiverService(this);
         this.mapCanvas = new MapCanvas(config.getRefLat(), config.getRefLon());
         configureUi();
@@ -162,7 +164,7 @@ public class StationMonitorFrame extends JFrame implements SerialReceiverService
         connectButton.addActionListener(e -> connect()); disconnectButton.addActionListener(e -> disconnect("user request")); exportButton.addActionListener(e -> exportLogCsv()); fullscreenButton.addActionListener(e -> toggleFullscreen());
         settingsButton.addActionListener(e -> openSettingsDialog()); helpButton.addActionListener(e -> showHelpDialog()); assignGuestButton.addActionListener(e -> assignGuestToSelectedDevice()); ppgMonitorButton.addActionListener(e -> openPpgMonitor());
         allFilterButton.addActionListener(e -> refreshEventLog()); warningFilterButton.addActionListener(e -> refreshEventLog());
-        addWindowListener(new WindowAdapter() { @Override public void windowClosing(WindowEvent e) { disconnect("window closing"); persistConfig(); dispose(); } });
+        addWindowListener(new WindowAdapter() { @Override public void windowClosing(WindowEvent e) { disconnect("window closing"); persistConfig(); if (displayAwakeManager != null) displayAwakeManager.stop(); dispose(); } });
     }
 
     private void refreshPorts() {
